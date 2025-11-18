@@ -73,6 +73,77 @@ sudo reboot
 
 ### Install UPM
 
+#### Method 1: Debian Package (.deb) - Recommended
+
+The easiest way to install on Zorin OS and Ubuntu-based systems:
+
+1. **Download the latest .deb package** from the releases page, or build it yourself:
+   ```bash
+   git clone https://github.com/pitcany/zorin_app_organizer.git
+   cd zorin_app_organizer
+   ./build-deb.sh
+   ```
+
+2. **Install the package:**
+   ```bash
+   sudo apt install ../unified-package-manager_*.deb
+   ```
+
+   Or with dpkg:
+   ```bash
+   sudo dpkg -i ../unified-package-manager_*.deb
+   sudo apt-get install -f  # Install dependencies if needed
+   ```
+
+3. **Launch from your application menu** or run `upm` from the terminal!
+
+#### Method 2: Installation Script
+
+Automated installation using the provided script:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/pitcany/zorin_app_organizer.git
+   cd zorin_app_organizer
+   ```
+
+2. **Run the installation script:**
+   ```bash
+   # User installation (recommended)
+   ./install.sh
+
+   # OR system-wide installation
+   sudo ./install.sh
+   ```
+
+3. **Launch the application:**
+   ```bash
+   upm
+   ```
+
+#### Method 3: Python Package (pip)
+
+Install via Python package manager:
+
+```bash
+# Clone the repository
+git clone https://github.com/pitcany/zorin_app_organizer.git
+cd zorin_app_organizer
+
+# Install with pip
+pip3 install --user .
+
+# OR for system-wide installation
+sudo pip3 install .
+
+# Run the application
+upm
+```
+
+#### Method 4: From Source (Development)
+
+Run directly from source without installation:
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/pitcany/zorin_app_organizer.git
@@ -84,36 +155,39 @@ sudo reboot
    pip3 install -r requirements.txt
    ```
 
-3. **Make the main script executable:**
-   ```bash
-   chmod +x main.py
-   ```
-
-4. **Run the application:**
+3. **Run the application:**
    ```bash
    python3 main.py
    ```
 
-### Create Desktop Launcher (Optional)
+#### Method 5: Development Mode
 
-To create a desktop launcher for easy access:
+Install in editable/development mode:
 
 ```bash
-cat > ~/.local/share/applications/upm.desktop <<EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Unified Package Manager
-Comment=Manage APT, Snap, and Flatpak packages
-Exec=python3 $(pwd)/main.py
-Icon=system-software-install
-Terminal=false
-Categories=System;PackageManager;
-EOF
-
-# Update desktop database
-update-desktop-database ~/.local/share/applications/
+git clone https://github.com/pitcany/zorin_app_organizer.git
+cd zorin_app_organizer
+pip3 install --user -e .
 ```
+
+This allows you to make changes to the code and see them reflected immediately.
+
+### Uninstallation
+
+To remove Unified Package Manager:
+
+```bash
+# If installed via .deb package
+sudo apt remove unified-package-manager
+
+# If installed via pip or install script
+./uninstall.sh
+
+# OR manually with pip
+pip3 uninstall zorin-unified-package-manager
+```
+
+The uninstall script will prompt you to optionally remove user data (database and logs).
 
 ## Usage Guide
 
@@ -176,6 +250,85 @@ update-desktop-database ~/.local/share/applications/
    - Click **Clear Logs** to remove old entries
    - Respects log retention settings
 
+## Building from Source
+
+### Build Debian Package
+
+To build your own .deb package:
+
+```bash
+# Install build dependencies
+sudo apt install dpkg-dev debhelper dh-python python3-all \
+                 python3-setuptools python3-pyqt5 python3-requests
+
+# Clone the repository
+git clone https://github.com/pitcany/zorin_app_organizer.git
+cd zorin_app_organizer
+
+# Build the package
+./build-deb.sh
+
+# Or use make
+make deb
+
+# Install the built package
+sudo apt install ../unified-package-manager_*.deb
+```
+
+### Build Python Packages
+
+To build Python wheel and source distributions:
+
+```bash
+# Install build tools
+pip3 install build twine
+
+# Build distributions
+make dist
+
+# OR manually
+python3 setup.py sdist bdist_wheel
+
+# Check package
+twine check dist/*
+
+# Install locally
+pip3 install dist/zorin_unified_package_manager-*.whl
+```
+
+### Using Makefile
+
+The project includes a comprehensive Makefile:
+
+```bash
+# Show all available targets
+make help
+
+# Install (user)
+make install
+
+# Install (system-wide)
+sudo make install-sys
+
+# Build Debian package
+make deb
+
+# Build Python distributions
+make dist
+
+# Clean build artifacts
+make clean
+
+# Run the application
+make run
+
+# Install in development mode
+make dev-install
+
+# Check package validity
+make check
+```
+
 ## Architecture
 
 ### Project Structure
@@ -189,8 +342,25 @@ zorin_app_organizer/
 ├── snap_backend.py        # Snap Store backend
 ├── flatpak_backend.py     # Flatpak/Flathub backend
 ├── requirements.txt       # Python dependencies
+├── setup.py               # Python package setup script
+├── pyproject.toml         # Modern Python package configuration
+├── MANIFEST.in            # Package manifest for distribution
+├── LICENSE                # MIT License
+├── Makefile               # Build automation
+├── install.sh             # Installation script
+├── uninstall.sh           # Uninstallation script
+├── build-deb.sh           # Debian package build script
+├── data/                  # Application data files
+│   ├── upm.desktop        # Desktop entry file
+│   └── upm.svg            # Application icon
+├── debian/                # Debian packaging files
+│   ├── control            # Package metadata
+│   ├── rules              # Build rules
+│   ├── changelog          # Package changelog
+│   ├── compat             # Debhelper compatibility level
+│   └── copyright          # Copyright information
 ├── .gitignore            # Git ignore rules
-└── README.md             # This file
+└── README.md             # This file (documentation)
 ```
 
 ### Database Schema

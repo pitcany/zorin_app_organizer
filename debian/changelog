@@ -1,0 +1,19 @@
+unified-package-manager (1.0.0-1) stable; urgency=medium
+
+  * Initial release of Unified Package Manager
+  * Unified search across APT, Snap, and Flatpak repositories
+  * One-click installation and uninstallation of packages
+  * Settings panel with repository toggles and preferences
+  * Comprehensive logging system with export functionality
+  * Real-time in-app notifications for all operations
+  * SQLite database for tracking installed apps and user preferences
+  * Support for custom APT repositories (PPAs)
+  * Automatic Flathub repository setup
+  * Package filtering by repository type
+  * PyQt5-based graphical user interface
+  * Security features with pkexec privilege escalation
+  * Multi-language desktop entry support
+  * Professional application icon
+  * Comprehensive documentation and troubleshooting guide
+
+ -- Zorin App Organizer Team <support@zorinos.com>  Tue, 18 Nov 2025 12:00:00 +0000
