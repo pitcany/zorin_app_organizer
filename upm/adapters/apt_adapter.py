@@ -27,8 +27,44 @@ class AptAdapter(PackageManagerAdapter):
         if not self.is_available():
             return []
 
-        # TODO: Implement search
-        return []
+        try:
+            import apt
+
+            # Initialize cache if needed
+            if self._cache is None:
+                self._cache = apt.Cache()
+
+            results = []
+            query_lower = query.lower()
+
+            # Search through packages
+            for pkg in self._cache:
+                # Check if query matches package name or description
+                name_match = query_lower in pkg.name.lower()
+                desc_match = False
+
+                if pkg.candidate and pkg.candidate.description:
+                    desc_match = query_lower in pkg.candidate.description.lower()
+
+                if name_match or desc_match:
+                    # Get version from candidate
+                    version = pkg.candidate.version if pkg.candidate else "unknown"
+                    description = pkg.candidate.summary if pkg.candidate else ""
+
+                    result = PackageSearchResult(
+                        package_id=pkg.name,
+                        name=pkg.name,
+                        description=description,
+                        version=version,
+                        package_manager="apt"
+                    )
+                    results.append(result)
+
+            return results
+
+        except Exception as e:
+            print(f"Error searching APT: {e}")
+            return []
 
     def install(self, package_id: str, progress_callback: Optional[Callable] = None) -> bool:
         """Install package via APT"""
