@@ -87,8 +87,32 @@ class AptAdapter(PackageManagerAdapter):
         if not self.is_available():
             return []
 
-        # TODO: Implement list_installed
-        return []
+        try:
+            import apt
+            from datetime import datetime
+
+            # Initialize cache if needed
+            if self._cache is None:
+                self._cache = apt.Cache()
+
+            installed = []
+
+            for pkg in self._cache:
+                if pkg.is_installed:
+                    info = PackageInfo(
+                        package_id=pkg.name,
+                        name=pkg.name,
+                        version=pkg.installed.version,
+                        package_manager="apt",
+                        install_date=None  # APT doesn't easily provide install date
+                    )
+                    installed.append(info)
+
+            return installed
+
+        except Exception as e:
+            print(f"Error listing installed APT packages: {e}")
+            return []
 
     def get_details(self, package_id: str) -> Optional[PackageDetails]:
         """Get package details from APT"""
