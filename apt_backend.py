@@ -355,3 +355,132 @@ class AptBackend:
             return False, "Remove repository timed out"
         except Exception as e:
             return False, f"Failed to remove repository: {str(e)}"
+
+    def get_system_repositories(self) -> List[Dict]:
+        """Scan system for existing APT repositories
+
+        Returns:
+            List of dictionaries containing repository information
+        """
+        import os
+        import glob
+
+        repositories = []
+        sources_dir = "/etc/apt/sources.list.d/"
+
+        try:
+            # Parse .list files in sources.list.d/
+            if os.path.exists(sources_dir):
+                list_files = glob.glob(os.path.join(sources_dir, "*.list"))
+
+                for list_file in list_files:
+                    try:
+                        with open(list_file, 'r') as f:
+                            content = f.read()
+
+                        # Parse each line
+                        for line in content.split('\n'):
+                            line = line.strip()
+
+                            # Skip empty lines and comments
+                            if not line or line.startswith('#'):
+                                continue
+
+                            # Parse repository line
+                            repo_info = self._parse_repo_line(line, list_file)
+                            if repo_info:
+                                repositories.append(repo_info)
+
+                    except PermissionError:
+                        # Skip files we can't read
+                        continue
+                    except Exception as e:
+                        # Log error but continue
+                        print(f"Error parsing {list_file}: {e}")
+                        continue
+
+            # Also check main sources.list if it exists
+            main_sources = "/etc/apt/sources.list"
+            if os.path.exists(main_sources):
+                try:
+                    with open(main_sources, 'r') as f:
+                        content = f.read()
+
+                    for line in content.split('\n'):
+                        line = line.strip()
+
+                        if not line or line.startswith('#'):
+                            continue
+
+                        repo_info = self._parse_repo_line(line, main_sources)
+                        if repo_info:
+                            repositories.append(repo_info)
+
+                except PermissionError:
+                    pass
+                except Exception as e:
+                    print(f"Error parsing sources.list: {e}")
+
+        except Exception as e:
+            print(f"Error scanning repositories: {e}")
+
+        return repositories
+
+    def _parse_repo_line(self, line: str, source_file: str) -> Optional[Dict]:
+        """Parse a repository line from sources.list file
+
+        Args:
+            line: Repository line (e.g., "deb http://... focal main")
+            source_file: Source file path
+
+        Returns:
+            Dictionary with repository info or None
+        """
+        import os
+
+        try:
+            parts = line.split()
+
+            if len(parts) < 3:
+                return None
+
+            repo_type = parts[0]  # deb or deb-src
+
+            if repo_type not in ['deb', 'deb-src']:
+                return None
+
+            # Extract URL (may have options in brackets before it)
+            url_start_idx = 1
+            if parts[1].startswith('['):
+                # Find end of options
+                for i in range(1, len(parts)):
+                    if parts[i].endswith(']'):
+                        url_start_idx = i + 1
+                        break
+
+            if url_start_idx >= len(parts):
+                return None
+
+            url = parts[url_start_idx]
+
+            # Determine repository name from file or URL
+            file_basename = os.path.basename(source_file)
+            if file_basename.endswith('.list'):
+                repo_name = file_basename[:-5]  # Remove .list extension
+            else:
+                # Try to extract from URL
+                repo_name = url.split('//')[-1].split('/')[0]
+
+            # Full repository line for storage
+            full_line = line
+
+            return {
+                'name': repo_name,
+                'url': full_line,
+                'type': repo_type.upper(),
+                'source_file': source_file,
+                'is_system': True
+            }
+
+        except Exception as e:
+            return None

@@ -263,6 +263,11 @@ class UnifiedPackageManager(QMainWindow):
         refresh_repo_button.clicked.connect(self.load_custom_repositories)
         repo_buttons_layout.addWidget(refresh_repo_button)
 
+        scan_system_button = QPushButton("Scan System Repos")
+        scan_system_button.clicked.connect(self.scan_system_repositories)
+        scan_system_button.setToolTip("Detect repositories already configured on your system")
+        repo_buttons_layout.addWidget(scan_system_button)
+
         repo_buttons_layout.addStretch()
 
         layout.addWidget(custom_repo_group)
@@ -877,6 +882,122 @@ class UnifiedPackageManager(QMainWindow):
         status = "enabled" if enabled else "disabled"
         self.logger.log_info(f"Repository {repo_id} {status}")
         self.statusBar().showMessage(f"Repository {status}")
+
+    def scan_system_repositories(self):
+        """Scan system for existing repositories and display them"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QDialogButtonBox, QCheckBox
+
+        self.statusBar().showMessage("Scanning system repositories...")
+
+        # Get system repositories
+        try:
+            system_repos = self.apt_backend.get_system_repositories()
+
+            if not system_repos:
+                QMessageBox.information(
+                    self, "No Repositories Found",
+                    "No additional repositories were found on your system.\n\n"
+                    "This is normal if you haven't added any custom repositories yet."
+                )
+                self.statusBar().showMessage("Ready")
+                return
+
+            # Create dialog to show found repositories
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"System Repositories Found ({len(system_repos)})")
+            dialog.setMinimumSize(700, 400)
+
+            layout = QVBoxLayout()
+            dialog.setLayout(layout)
+
+            # Info label
+            info_label = QLabel(
+                f"Found <b>{len(system_repos)}</b> repository entries on your system.<br>"
+                "Select the ones you want to import into UPM for easier management:"
+            )
+            info_label.setWordWrap(True)
+            layout.addWidget(info_label)
+
+            # List widget with checkboxes
+            repo_list = QListWidget()
+            layout.addWidget(repo_list)
+
+            for repo in system_repos:
+                item_text = f"{repo['name']} - {repo['url'][:80]}..."
+                if len(repo['url']) <= 80:
+                    item_text = f"{repo['name']} - {repo['url']}"
+
+                item = QListWidgetItem(item_text)
+                item.setCheckState(Qt.Unchecked)
+                item.setData(Qt.UserRole, repo)  # Store repo data
+                repo_list.addItem(item)
+
+            # Select all / Deselect all buttons
+            select_buttons_layout = QHBoxLayout()
+            layout.addLayout(select_buttons_layout)
+
+            select_all_btn = QPushButton("Select All")
+            select_all_btn.clicked.connect(lambda: self._toggle_all_repos(repo_list, Qt.Checked))
+            select_buttons_layout.addWidget(select_all_btn)
+
+            deselect_all_btn = QPushButton("Deselect All")
+            deselect_all_btn.clicked.connect(lambda: self._toggle_all_repos(repo_list, Qt.Unchecked))
+            select_buttons_layout.addWidget(deselect_all_btn)
+
+            select_buttons_layout.addStretch()
+
+            # Buttons
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+
+            if dialog.exec_() == QDialog.Accepted:
+                # Import selected repositories
+                imported_count = 0
+
+                for i in range(repo_list.count()):
+                    item = repo_list.item(i)
+                    if item.checkState() == Qt.Checked:
+                        repo = item.data(Qt.UserRole)
+
+                        # Add to database
+                        if self.db.add_custom_repository(
+                            repo['name'],
+                            repo['url'],
+                            repo['type']
+                        ):
+                            imported_count += 1
+                            self.logger.log_info(f"Imported system repository: {repo['name']}")
+
+                if imported_count > 0:
+                    QMessageBox.information(
+                        self, "Import Complete",
+                        f"Successfully imported {imported_count} repository/repositories.\n\n"
+                        "They will now appear in your custom repositories list."
+                    )
+                    self.load_custom_repositories()
+                else:
+                    QMessageBox.information(
+                        self, "No Changes",
+                        "No repositories were imported.\n\n"
+                        "The selected repositories may already exist in your database."
+                    )
+
+            self.statusBar().showMessage("Ready")
+
+        except Exception as e:
+            self.logger.log_error(f"Error scanning system repositories: {str(e)}")
+            QMessageBox.critical(
+                self, "Scan Error",
+                f"Failed to scan system repositories:\n\n{str(e)}"
+            )
+            self.statusBar().showMessage("Ready")
+
+    def _toggle_all_repos(self, list_widget, check_state):
+        """Helper to select/deselect all repositories in list"""
+        for i in range(list_widget.count()):
+            list_widget.item(i).setCheckState(check_state)
 
     # ==================== Logs Functions ====================
 
