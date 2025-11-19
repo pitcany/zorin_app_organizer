@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTableWidget, QTableWidgetItem, QMessageBox, QComboBox,
                              QCheckBox, QSpinBox, QTextEdit, QHeaderView, QProgressBar,
                              QFileDialog, QGroupBox, QFormLayout)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 
 from database import DatabaseManager
