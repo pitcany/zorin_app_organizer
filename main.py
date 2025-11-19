@@ -102,8 +102,8 @@ class UnifiedPackageManager(QMainWindow):
         # Load preferences
         self.load_preferences()
 
-        # Check system status
-        self.check_system_status()
+        # Check system status will be done after window is shown to avoid blocking
+        # (moved to main() function with QTimer)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -772,8 +772,11 @@ def main():
     window = UnifiedPackageManager()
     window.show()
 
-    # Load installed apps on startup
-    window.load_installed_apps()
+    # Defer slow operations until after the window is shown and event loop starts
+    # This prevents the black screen issue caused by blocking the GUI thread
+    from PyQt5.QtCore import QTimer
+    QTimer.singleShot(50, window.check_system_status)  # Check system first
+    QTimer.singleShot(100, window.load_installed_apps)  # Then load apps
 
     sys.exit(app.exec_())
 
