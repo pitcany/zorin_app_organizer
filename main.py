@@ -102,8 +102,8 @@ class UnifiedPackageManager(QMainWindow):
         # Load preferences
         self.load_preferences()
 
-        # Check system status
-        self.check_system_status()
+        # Check system status will be done after window is shown to avoid blocking
+        # (moved to main() function with QTimer)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -232,6 +232,45 @@ class UnifiedPackageManager(QMainWindow):
         repo_layout.addRow("Flatpak:", self.flatpak_checkbox)
 
         layout.addWidget(repo_group)
+
+        # Custom repositories management group
+        custom_repo_group = QGroupBox("Custom APT Repositories (PPAs)")
+        custom_repo_layout = QVBoxLayout()
+        custom_repo_group.setLayout(custom_repo_layout)
+
+        # Repository list table
+        self.repo_table = QTableWidget()
+        self.repo_table.setColumnCount(4)
+        self.repo_table.setHorizontalHeaderLabels(["Name", "URL", "Type", "Enabled"])
+        self.repo_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.repo_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.repo_table.setMaximumHeight(150)
+        custom_repo_layout.addWidget(self.repo_table)
+
+        # Repository management buttons
+        repo_buttons_layout = QHBoxLayout()
+        custom_repo_layout.addLayout(repo_buttons_layout)
+
+        add_repo_button = QPushButton("Add Repository")
+        add_repo_button.clicked.connect(self.add_custom_repository)
+        repo_buttons_layout.addWidget(add_repo_button)
+
+        delete_repo_button = QPushButton("Delete Selected")
+        delete_repo_button.clicked.connect(self.delete_custom_repository)
+        repo_buttons_layout.addWidget(delete_repo_button)
+
+        refresh_repo_button = QPushButton("Refresh List")
+        refresh_repo_button.clicked.connect(self.load_custom_repositories)
+        repo_buttons_layout.addWidget(refresh_repo_button)
+
+        scan_system_button = QPushButton("Scan System Repos")
+        scan_system_button.clicked.connect(self.scan_system_repositories)
+        scan_system_button.setToolTip("Detect repositories already configured on your system")
+        repo_buttons_layout.addWidget(scan_system_button)
+
+        repo_buttons_layout.addStretch()
+
+        layout.addWidget(custom_repo_group)
 
         # Notification settings group
         notif_group = QGroupBox("Notifications")
@@ -628,6 +667,9 @@ class UnifiedPackageManager(QMainWindow):
         self.auto_save_checkbox.setChecked(prefs['auto_save_metadata'])
         self.log_retention.setValue(prefs['log_retention_days'])
 
+        # Load custom repositories
+        self.load_custom_repositories()
+
     def save_settings(self):
         """Save settings to database"""
         prefs = {
@@ -661,6 +703,301 @@ class UnifiedPackageManager(QMainWindow):
             self.log_retention.setValue(30)
 
             self.save_settings()
+
+    # ==================== Custom Repository Management ====================
+
+    def load_custom_repositories(self):
+        """Load custom repositories from database and display in table"""
+        try:
+            repos = self.db.get_custom_repositories()
+
+            self.repo_table.setRowCount(0)
+
+            for repo in repos:
+                row = self.repo_table.rowCount()
+                self.repo_table.insertRow(row)
+
+                self.repo_table.setItem(row, 0, QTableWidgetItem(repo['name']))
+                self.repo_table.setItem(row, 1, QTableWidgetItem(repo['url']))
+                self.repo_table.setItem(row, 2, QTableWidgetItem(repo['type']))
+
+                # Enabled checkbox
+                enabled_checkbox = QCheckBox()
+                enabled_checkbox.setChecked(repo['enabled'])
+                enabled_checkbox.stateChanged.connect(
+                    lambda state, repo_id=repo['id']: self.toggle_repository(repo_id, state == Qt.Checked)
+                )
+                # Center the checkbox
+                checkbox_widget = QWidget()
+                checkbox_layout = QHBoxLayout(checkbox_widget)
+                checkbox_layout.addWidget(enabled_checkbox)
+                checkbox_layout.setAlignment(Qt.AlignCenter)
+                checkbox_layout.setContentsMargins(0, 0, 0, 0)
+                self.repo_table.setCellWidget(row, 3, checkbox_widget)
+
+                # Store repo ID in the row for later reference
+                self.repo_table.item(row, 0).setData(Qt.UserRole, repo['id'])
+
+            self.statusBar().showMessage(f"Loaded {len(repos)} custom repositories")
+
+        except Exception as e:
+            self.logger.log_error(f"Failed to load custom repositories: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to load repositories: {str(e)}")
+
+    def add_custom_repository(self):
+        """Show dialog to add a new custom repository"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Custom Repository")
+        dialog.setMinimumWidth(500)
+
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+
+        # Repository name
+        layout.addWidget(QLabel("Repository Name:"))
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("e.g., Google Chrome")
+        layout.addWidget(name_input)
+
+        # Repository URL
+        layout.addWidget(QLabel("Repository URL:"))
+        url_input = QLineEdit()
+        url_input.setPlaceholderText("e.g., ppa:user/repo or deb http://... ")
+        layout.addWidget(url_input)
+
+        # Repository type
+        layout.addWidget(QLabel("Repository Type:"))
+        type_combo = QComboBox()
+        type_combo.addItems(["PPA", "DEB", "DEB-SRC"])
+        layout.addWidget(type_combo)
+
+        # Help text
+        help_text = QLabel(
+            "<b>Examples:</b><br>"
+            "• PPA: <code>ppa:graphics-drivers/ppa</code><br>"
+            "• DEB: <code>deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main</code><br>"
+            "<br><b>Note:</b> Adding a repository requires administrator privileges."
+        )
+        help_text.setWordWrap(True)
+        help_text.setStyleSheet("QLabel { background-color: #f0f0f0; padding: 10px; border-radius: 5px; }")
+        layout.addWidget(help_text)
+
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec_() == QDialog.Accepted:
+            name = name_input.text().strip()
+            url = url_input.text().strip()
+            repo_type = type_combo.currentText()
+
+            if not name or not url:
+                QMessageBox.warning(self, "Invalid Input", "Please enter both name and URL")
+                return
+
+            # Confirm before adding
+            confirm = QMessageBox.question(
+                self, "Add Repository",
+                f"Add repository '{name}'?\n\nURL: {url}\nType: {repo_type}\n\n"
+                "This will require administrator privileges and will run 'apt update'.",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if confirm != QMessageBox.Yes:
+                return
+
+            # Add to database first
+            if self.db.add_custom_repository(name, url, repo_type):
+                self.logger.log_info(f"Added custom repository: {name} ({url})")
+
+                # Try to add to system using apt backend
+                self.statusBar().showMessage(f"Adding repository {name}...")
+                success, message = self.apt_backend.add_repository(url)
+
+                if success:
+                    self.logger.log_success(f"Repository {name} added successfully")
+                    self.db.add_log('add_repository', 'success', name, repo_type, message)
+                    QMessageBox.information(self, "Success", f"Repository '{name}' added successfully!\n\n{message}")
+                    self.load_custom_repositories()
+                else:
+                    self.logger.log_error(f"Failed to add repository {name}: {message}")
+                    self.db.add_log('add_repository', 'failed', name, repo_type, message)
+                    QMessageBox.critical(self, "Error", f"Failed to add repository:\n\n{message}")
+                    # Remove from database since system add failed
+                    # We don't have the ID, so we'll keep it but mark as failed in logs
+
+                self.statusBar().showMessage("Ready")
+            else:
+                QMessageBox.warning(self, "Duplicate", "This repository URL already exists")
+
+    def delete_custom_repository(self):
+        """Delete selected custom repository"""
+        current_row = self.repo_table.currentRow()
+
+        if current_row < 0:
+            QMessageBox.warning(self, "No Selection", "Please select a repository to delete")
+            return
+
+        repo_name = self.repo_table.item(current_row, 0).text()
+        repo_url = self.repo_table.item(current_row, 1).text()
+        repo_id = self.repo_table.item(current_row, 0).data(Qt.UserRole)
+
+        confirm = QMessageBox.question(
+            self, "Delete Repository",
+            f"Delete repository '{repo_name}'?\n\nURL: {repo_url}\n\n"
+            "This will require administrator privileges.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        # Try to remove from system first
+        self.statusBar().showMessage(f"Removing repository {repo_name}...")
+        success, message = self.apt_backend.remove_repository(repo_url)
+
+        if success:
+            self.logger.log_success(f"Repository {repo_name} removed from system")
+        else:
+            self.logger.log_error(f"Failed to remove repository {repo_name}: {message}")
+            # Continue anyway to remove from database
+
+        # Remove from database
+        self.db.remove_custom_repository(repo_id)
+        self.db.add_log('remove_repository', 'success' if success else 'partial', repo_name, 'APT', message)
+
+        self.logger.log_info(f"Removed custom repository: {repo_name}")
+        QMessageBox.information(self, "Repository Removed", f"Repository '{repo_name}' has been removed.")
+
+        self.load_custom_repositories()
+        self.statusBar().showMessage("Ready")
+
+    def toggle_repository(self, repo_id: int, enabled: bool):
+        """Enable or disable a custom repository"""
+        self.db.toggle_repository(repo_id, enabled)
+        status = "enabled" if enabled else "disabled"
+        self.logger.log_info(f"Repository {repo_id} {status}")
+        self.statusBar().showMessage(f"Repository {status}")
+
+    def scan_system_repositories(self):
+        """Scan system for existing repositories and display them"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QDialogButtonBox, QCheckBox
+
+        self.statusBar().showMessage("Scanning system repositories...")
+
+        # Get system repositories
+        try:
+            system_repos = self.apt_backend.get_system_repositories()
+
+            if not system_repos:
+                QMessageBox.information(
+                    self, "No Repositories Found",
+                    "No additional repositories were found on your system.\n\n"
+                    "This is normal if you haven't added any custom repositories yet."
+                )
+                self.statusBar().showMessage("Ready")
+                return
+
+            # Create dialog to show found repositories
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"System Repositories Found ({len(system_repos)})")
+            dialog.setMinimumSize(700, 400)
+
+            layout = QVBoxLayout()
+            dialog.setLayout(layout)
+
+            # Info label
+            info_label = QLabel(
+                f"Found <b>{len(system_repos)}</b> repository entries on your system.<br>"
+                "Select the ones you want to import into UPM for easier management:"
+            )
+            info_label.setWordWrap(True)
+            layout.addWidget(info_label)
+
+            # List widget with checkboxes
+            repo_list = QListWidget()
+            layout.addWidget(repo_list)
+
+            for repo in system_repos:
+                item_text = f"{repo['name']} - {repo['url'][:80]}..."
+                if len(repo['url']) <= 80:
+                    item_text = f"{repo['name']} - {repo['url']}"
+
+                item = QListWidgetItem(item_text)
+                item.setCheckState(Qt.Unchecked)
+                item.setData(Qt.UserRole, repo)  # Store repo data
+                repo_list.addItem(item)
+
+            # Select all / Deselect all buttons
+            select_buttons_layout = QHBoxLayout()
+            layout.addLayout(select_buttons_layout)
+
+            select_all_btn = QPushButton("Select All")
+            select_all_btn.clicked.connect(lambda: self._toggle_all_repos(repo_list, Qt.Checked))
+            select_buttons_layout.addWidget(select_all_btn)
+
+            deselect_all_btn = QPushButton("Deselect All")
+            deselect_all_btn.clicked.connect(lambda: self._toggle_all_repos(repo_list, Qt.Unchecked))
+            select_buttons_layout.addWidget(deselect_all_btn)
+
+            select_buttons_layout.addStretch()
+
+            # Buttons
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+
+            if dialog.exec_() == QDialog.Accepted:
+                # Import selected repositories
+                imported_count = 0
+
+                for i in range(repo_list.count()):
+                    item = repo_list.item(i)
+                    if item.checkState() == Qt.Checked:
+                        repo = item.data(Qt.UserRole)
+
+                        # Add to database
+                        if self.db.add_custom_repository(
+                            repo['name'],
+                            repo['url'],
+                            repo['type']
+                        ):
+                            imported_count += 1
+                            self.logger.log_info(f"Imported system repository: {repo['name']}")
+
+                if imported_count > 0:
+                    QMessageBox.information(
+                        self, "Import Complete",
+                        f"Successfully imported {imported_count} repository/repositories.\n\n"
+                        "They will now appear in your custom repositories list."
+                    )
+                    self.load_custom_repositories()
+                else:
+                    QMessageBox.information(
+                        self, "No Changes",
+                        "No repositories were imported.\n\n"
+                        "The selected repositories may already exist in your database."
+                    )
+
+            self.statusBar().showMessage("Ready")
+
+        except Exception as e:
+            self.logger.log_error(f"Error scanning system repositories: {str(e)}")
+            QMessageBox.critical(
+                self, "Scan Error",
+                f"Failed to scan system repositories:\n\n{str(e)}"
+            )
+            self.statusBar().showMessage("Ready")
+
+    def _toggle_all_repos(self, list_widget, check_state):
+        """Helper to select/deselect all repositories in list"""
+        for i in range(list_widget.count()):
+            list_widget.item(i).setCheckState(check_state)
 
     # ==================== Logs Functions ====================
 
@@ -772,8 +1109,11 @@ def main():
     window = UnifiedPackageManager()
     window.show()
 
-    # Load installed apps on startup (deferred to allow UI to render first)
-    QTimer.singleShot(0, window.load_installed_apps)
+    # Defer slow operations until after the window is shown and event loop starts
+    # This prevents the black screen issue caused by blocking the GUI thread
+    from PyQt5.QtCore import QTimer
+    QTimer.singleShot(50, window.check_system_status)  # Check system first
+    QTimer.singleShot(100, window.load_installed_apps)  # Then load apps
 
     sys.exit(app.exec_())
 
