@@ -146,7 +146,7 @@ class UnifiedPackageManager(QMainWindow):
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self.search_packages)
-        search_layout.addButton(self.search_button)
+        search_layout.addWidget(self.search_button)
 
         # Repository filter
         filter_layout = QHBoxLayout()
