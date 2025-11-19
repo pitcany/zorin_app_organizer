@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTableWidget, QTableWidgetItem, QMessageBox, QComboBox,
                              QCheckBox, QSpinBox, QTextEdit, QHeaderView, QProgressBar,
                              QFileDialog, QGroupBox, QFormLayout)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 
 from database import DatabaseManager
@@ -146,7 +146,7 @@ class UnifiedPackageManager(QMainWindow):
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self.search_packages)
-        search_layout.addButton(self.search_button)
+        search_layout.addWidget(self.search_button)
 
         # Repository filter
         filter_layout = QHBoxLayout()
@@ -772,8 +772,8 @@ def main():
     window = UnifiedPackageManager()
     window.show()
 
-    # Load installed apps on startup
-    window.load_installed_apps()
+    # Load installed apps on startup (deferred to allow UI to render first)
+    QTimer.singleShot(0, window.load_installed_apps)
 
     sys.exit(app.exec_())
 
