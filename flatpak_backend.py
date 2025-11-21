@@ -6,7 +6,22 @@ Handles Flatpak operations including search, install, uninstall, and package inf
 import subprocess
 import requests
 import json
+import re
 from typing import List, Dict, Optional, Tuple
+
+
+def validate_flatpak_id(flatpak_id: str) -> bool:
+    """
+    P0 Fix: Validate Flatpak app ID to prevent command injection
+
+    Flatpak IDs use reverse DNS notation: org.example.AppName
+    """
+    if not flatpak_id or len(flatpak_id) > 255:
+        return False
+
+    # Flatpak ID pattern: reverse DNS notation
+    pattern = r'^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$'
+    return bool(re.match(pattern, flatpak_id))
 
 
 class FlatpakBackend:
@@ -283,6 +298,10 @@ class FlatpakBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate Flatpak ID to prevent command injection
+        if not validate_flatpak_id(app_id):
+            return False, f"Invalid Flatpak ID: {app_id}"
+
         try:
             if system_wide:
                 cmd = ['pkexec', 'flatpak', 'install', '-y', 'flathub', app_id]
@@ -317,6 +336,10 @@ class FlatpakBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate Flatpak ID to prevent command injection
+        if not validate_flatpak_id(app_id):
+            return False, f"Invalid Flatpak ID: {app_id}"
+
         try:
             if system_wide:
                 cmd = ['pkexec', 'flatpak', 'uninstall', '-y', app_id]

@@ -5,25 +5,57 @@ Handles SQLite database operations for tracking apps, preferences, and logs
 
 import sqlite3
 import os
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
 
 
 class DatabaseManager:
     """Manages SQLite database for UPM"""
 
+    # Whitelist of allowed preference keys to prevent SQL injection
+    ALLOWED_PREFERENCE_KEYS = {
+        'repo_flathub_enabled',
+        'repo_snapd_enabled',
+        'repo_apt_enabled',
+        'notifications_enabled',
+        'log_retention_days',
+        'auto_save_metadata'
+    }
+
     def __init__(self, db_path: str = "upm.db"):
         """Initialize database connection and create tables if they don't exist"""
         self.db_path = db_path
-        self.conn = None
-        self.cursor = None
-        self.connect()
-        self.create_tables()
+        # P0 Fix: Use thread-local storage for connections to prevent race conditions
+        self._local = threading.local()
+        self._lock = threading.Lock()
+        # Initialize connection for main thread
+        try:
+            self.connect()
+            self.create_tables()
+        except Exception as e:
+            # P0 Fix: Prevent resource leak on initialization failure
+            self.close()
+            raise RuntimeError(f"Failed to initialize database: {e}") from e
 
     def connect(self):
-        """Establish database connection"""
-        self.conn = sqlite3.connect(self.db_path)
-        self.cursor = self.conn.cursor()
+        """Establish database connection for current thread"""
+        # P0 Fix: Each thread gets its own connection
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._local.cursor = self._local.conn.cursor()
+
+    @property
+    def conn(self):
+        """Get connection for current thread"""
+        self.connect()  # Ensure connection exists
+        return self._local.conn
+
+    @property
+    def cursor(self):
+        """Get cursor for current thread"""
+        self.connect()  # Ensure connection exists
+        return self._local.cursor
 
     def create_tables(self):
         """Create database tables if they don't exist"""
@@ -37,9 +69,18 @@ class DatabaseManager:
                 source_repo TEXT NOT NULL,
                 version TEXT,
                 description TEXT,
-                install_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                install_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP DEFAULT NULL
             )
         """)
+
+        # P0 Fix: Add deleted_at column if it doesn't exist (migration)
+        try:
+            self.cursor.execute("ALTER TABLE installed_apps ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL")
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # Column already exists, ignore
+            pass
 
         # User preferences table
         self.cursor.execute("""
@@ -106,23 +147,29 @@ class DatabaseManager:
             return False
 
     def remove_installed_app(self, package_name: str):
-        """Remove an app from the installed apps list"""
-        self.cursor.execute("DELETE FROM installed_apps WHERE package_name = ?", (package_name,))
+        """Remove an app from the installed apps list (soft delete)"""
+        # P0 Fix: Use soft delete to prevent data loss
+        self.cursor.execute(
+            "UPDATE installed_apps SET deleted_at = ? WHERE package_name = ? AND deleted_at IS NULL",
+            (datetime.now(timezone.utc), package_name)
+        )
         self.conn.commit()
 
     def get_installed_apps(self, package_type: Optional[str] = None) -> List[Dict]:
         """Get list of installed apps, optionally filtered by package type"""
+        # P0 Fix: Exclude soft-deleted apps
         if package_type:
             self.cursor.execute("""
                 SELECT name, package_name, package_type, source_repo, version, description, install_date
                 FROM installed_apps
-                WHERE package_type = ?
+                WHERE package_type = ? AND deleted_at IS NULL
                 ORDER BY name
             """, (package_type,))
         else:
             self.cursor.execute("""
                 SELECT name, package_name, package_type, source_repo, version, description, install_date
                 FROM installed_apps
+                WHERE deleted_at IS NULL
                 ORDER BY name
             """)
 
@@ -141,7 +188,11 @@ class DatabaseManager:
 
     def is_app_installed(self, package_name: str) -> bool:
         """Check if an app is already installed"""
-        self.cursor.execute("SELECT COUNT(*) FROM installed_apps WHERE package_name = ?", (package_name,))
+        # P0 Fix: Exclude soft-deleted apps from check
+        self.cursor.execute(
+            "SELECT COUNT(*) FROM installed_apps WHERE package_name = ? AND deleted_at IS NULL",
+            (package_name,)
+        )
         return self.cursor.fetchone()[0] > 0
 
     # ==================== User Preferences Methods ====================
@@ -154,6 +205,22 @@ class DatabaseManager:
             FROM user_prefs WHERE id = 1
         """)
         row = self.cursor.fetchone()
+
+        # P0 Fix: Handle case where preferences row doesn't exist
+        if row is None:
+            # Auto-recover by creating default preferences
+            self.cursor.execute("INSERT INTO user_prefs (id) VALUES (1)")
+            self.conn.commit()
+            # Retry query
+            self.cursor.execute("""
+                SELECT repo_flathub_enabled, repo_snapd_enabled, repo_apt_enabled,
+                       notifications_enabled, log_retention_days, auto_save_metadata
+                FROM user_prefs WHERE id = 1
+            """)
+            row = self.cursor.fetchone()
+            if row is None:
+                raise RuntimeError("Failed to create or retrieve user preferences")
+
         return {
             'repo_flathub_enabled': bool(row[0]),
             'repo_snapd_enabled': bool(row[1]),
@@ -165,6 +232,9 @@ class DatabaseManager:
 
     def update_preference(self, key: str, value):
         """Update a specific preference"""
+        # P0 Fix: Validate key against whitelist to prevent SQL injection
+        if key not in self.ALLOWED_PREFERENCE_KEYS:
+            raise ValueError(f"Invalid preference key: {key}. Allowed keys: {self.ALLOWED_PREFERENCE_KEYS}")
         query = f"UPDATE user_prefs SET {key} = ? WHERE id = 1"
         self.cursor.execute(query, (value,))
         self.conn.commit()
@@ -218,9 +288,24 @@ class DatabaseManager:
 
     def export_logs(self, filepath: str, days: int = 7):
         """Export logs to a text file"""
-        from datetime import timedelta
+        # P0 Fix: Validate filepath to prevent path traversal attacks
+        # Resolve to absolute path and check for suspicious patterns
+        abs_path = os.path.abspath(filepath)
 
-        cutoff_date = datetime.now() - timedelta(days=days)
+        # Check for path traversal attempts
+        if '..' in filepath or filepath.startswith('/etc') or filepath.startswith('/sys') or filepath.startswith('/proc'):
+            raise ValueError(f"Invalid file path: {filepath}")
+
+        # Ensure the directory exists and is writable
+        directory = os.path.dirname(abs_path)
+        if directory and not os.path.exists(directory):
+            raise ValueError(f"Directory does not exist: {directory}")
+
+        # Use the validated absolute path
+        filepath = abs_path
+
+        # P0 Fix: Use timezone-aware datetime for accurate comparisons
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         self.cursor.execute("""
             SELECT timestamp, action_type, package_name, package_type, status, message, error_details
             FROM logs
@@ -250,8 +335,8 @@ class DatabaseManager:
         prefs = self.get_preferences()
         retention_days = prefs['log_retention_days']
 
-        from datetime import timedelta
-        cutoff_date = datetime.now() - timedelta(days=retention_days)
+        # P0 Fix: Use timezone-aware datetime for accurate comparisons
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
         self.cursor.execute("DELETE FROM logs WHERE timestamp < ?", (cutoff_date,))
         deleted = self.cursor.rowcount
@@ -313,9 +398,16 @@ class DatabaseManager:
     # ==================== Utility Methods ====================
 
     def close(self):
-        """Close database connection"""
-        if self.conn:
-            self.conn.close()
+        """Close database connection for current thread"""
+        # P0 Fix: Close thread-local connection
+        if hasattr(self._local, 'conn') and self._local.conn:
+            try:
+                self._local.conn.close()
+            except Exception:
+                pass  # Ignore errors during cleanup
+            finally:
+                self._local.conn = None
+                self._local.cursor = None
 
     def __enter__(self):
         """Context manager entry"""

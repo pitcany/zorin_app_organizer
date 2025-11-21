@@ -8,6 +8,22 @@ import re
 from typing import List, Dict, Optional, Tuple
 
 
+def validate_package_name(package_name: str) -> bool:
+    """
+    P0 Fix: Validate package name to prevent command injection
+
+    APT package names must follow Debian naming conventions:
+    - Lowercase letters, digits, plus, minus, and dot characters
+    - Must start with a lowercase letter or digit
+    """
+    if not package_name or len(package_name) > 200:
+        return False
+
+    # Debian package naming rules
+    pattern = r'^[a-z0-9][a-z0-9+.-]*$'
+    return bool(re.match(pattern, package_name))
+
+
 class AptBackend:
     """Backend for APT package management"""
 
@@ -227,6 +243,10 @@ class AptBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate package name to prevent command injection
+        if not validate_package_name(package_name):
+            return False, f"Invalid package name: {package_name}"
+
         try:
             # Use pkexec to get sudo privileges with GUI prompt
             result = subprocess.run(
@@ -256,6 +276,10 @@ class AptBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate package name to prevent command injection
+        if not validate_package_name(package_name):
+            return False, f"Invalid package name: {package_name}"
+
         try:
             # Use pkexec to get sudo privileges with GUI prompt
             result = subprocess.run(
@@ -369,8 +393,9 @@ class AptBackend:
         sources_dir = "/etc/apt/sources.list.d/"
 
         try:
+            # P0 Fix: Remove TOCTOU race by not checking existence before use
             # Parse .list files in sources.list.d/
-            if os.path.exists(sources_dir):
+            try:
                 list_files = glob.glob(os.path.join(sources_dir, "*.list"))
 
                 for list_file in list_files:
@@ -391,35 +416,38 @@ class AptBackend:
                             if repo_info:
                                 repositories.append(repo_info)
 
-                    except PermissionError:
-                        # Skip files we can't read
+                    except (PermissionError, FileNotFoundError):
+                        # Skip files we can't read or that were deleted
                         continue
                     except Exception as e:
                         # Log error but continue
                         print(f"Error parsing {list_file}: {e}")
                         continue
+            except (FileNotFoundError, PermissionError):
+                # Directory doesn't exist or can't be read
+                pass
 
-            # Also check main sources.list if it exists
+            # Also parse main sources.list
             main_sources = "/etc/apt/sources.list"
-            if os.path.exists(main_sources):
-                try:
-                    with open(main_sources, 'r') as f:
-                        content = f.read()
+            try:
+                with open(main_sources, 'r') as f:
+                    content = f.read()
 
-                    for line in content.split('\n'):
-                        line = line.strip()
+                for line in content.split('\n'):
+                    line = line.strip()
 
-                        if not line or line.startswith('#'):
-                            continue
+                    if not line or line.startswith('#'):
+                        continue
 
-                        repo_info = self._parse_repo_line(line, main_sources)
-                        if repo_info:
-                            repositories.append(repo_info)
+                    repo_info = self._parse_repo_line(line, main_sources)
+                    if repo_info:
+                        repositories.append(repo_info)
 
-                except PermissionError:
-                    pass
-                except Exception as e:
-                    print(f"Error parsing sources.list: {e}")
+            except (PermissionError, FileNotFoundError):
+                # File doesn't exist or can't be read
+                pass
+            except Exception as e:
+                print(f"Error parsing sources.list: {e}")
 
         except Exception as e:
             print(f"Error scanning repositories: {e}")
