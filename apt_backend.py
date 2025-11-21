@@ -6,6 +6,7 @@ Handles APT operations including search, install, uninstall, and package info
 import subprocess
 import re
 from typing import List, Dict, Optional, Tuple
+from package_verification import PackageVerifier
 
 
 def validate_package_name(package_name: str) -> bool:
@@ -31,6 +32,7 @@ class AptBackend:
         """Initialize APT backend"""
         self.package_type = "apt"
         self.source_repo = "Ubuntu/APT"
+        self.verifier = PackageVerifier()
 
     def is_available(self) -> bool:
         """Check if APT is available on the system"""
@@ -246,6 +248,16 @@ class AptBackend:
         # P0 Fix: Validate package name to prevent command injection
         if not validate_package_name(package_name):
             return False, f"Invalid package name: {package_name}"
+
+        # P1 Enhancement: Verify package signature before installation
+        print(f"🔐 Verifying package signature for {package_name}...")
+        verified, verify_msg = self.verifier.verify_apt_package_signature(package_name)
+        if not verified:
+            print(f"⚠️  Warning: {verify_msg}")
+            # Continue with installation but warn user
+            # APT has built-in signature verification, so this is informational
+        else:
+            print(verify_msg)
 
         try:
             # Use pkexec to get sudo privileges with GUI prompt

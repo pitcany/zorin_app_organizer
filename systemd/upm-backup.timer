@@ -1,0 +1,19 @@
+[Unit]
+Description=UPM Database Backup Timer
+Documentation=file:///usr/share/doc/upm/P1_ENHANCEMENTS.md
+Requires=upm-backup.service
+
+[Timer]
+# Run daily at 3:00 AM
+OnCalendar=daily
+# Run at 3:00 AM system time
+OnCalendar=*-*-* 03:00:00
+
+# If system was off when timer should have run, run it on next boot
+Persistent=true
+
+# Randomize start time by up to 15 minutes to avoid exact-hour load spikes
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

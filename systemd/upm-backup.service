@@ -1,0 +1,30 @@
+[Unit]
+Description=UPM Database Backup Service
+Documentation=file:///usr/share/doc/upm/P1_ENHANCEMENTS.md
+After=network.target
+
+[Service]
+Type=oneshot
+User=%u
+Group=%u
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+# Execute backup
+ExecStart=/usr/bin/python3 /usr/local/bin/upm-backup auto
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=upm-backup
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/upm
+
+[Install]
+WantedBy=multi-user.target
