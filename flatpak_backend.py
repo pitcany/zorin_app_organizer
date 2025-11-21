@@ -8,6 +8,8 @@ import requests
 import json
 import re
 from typing import List, Dict, Optional, Tuple
+from rate_limiter import rate_limit
+from package_verification import PackageVerifier
 
 
 def validate_flatpak_id(flatpak_id: str) -> bool:
@@ -33,6 +35,7 @@ class FlatpakBackend:
         self.source_repo = "Flathub"
         self.flathub_api = "https://flathub.org/api/v2"
         self.flathub_apps_cache = None
+        self.verifier = PackageVerifier()
 
     def is_available(self) -> bool:
         """Check if Flatpak is available on the system"""
@@ -116,6 +119,7 @@ class FlatpakBackend:
 
         return packages
 
+    @rate_limit('flathub', wait=True)
     def _search_via_api(self, query: str, limit: int) -> List[Dict]:
         """Search packages using Flathub API"""
         try:
@@ -301,6 +305,16 @@ class FlatpakBackend:
         # P0 Fix: Validate Flatpak ID to prevent command injection
         if not validate_flatpak_id(app_id):
             return False, f"Invalid Flatpak ID: {app_id}"
+
+        # P1 Enhancement: Verify package signature before installation
+        print(f"🔐 Verifying package signature for {app_id}...")
+        verified, verify_msg = self.verifier.verify_flatpak_signature(app_id)
+        if not verified:
+            print(f"⚠️  Warning: {verify_msg}")
+            # Continue with installation but warn user
+            # Flatpak has built-in signature verification, so this is informational
+        else:
+            print(verify_msg)
 
         try:
             if system_wide:

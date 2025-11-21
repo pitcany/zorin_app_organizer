@@ -8,6 +8,7 @@ import os
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
+from backup import DatabaseBackup
 
 
 class DatabaseManager:
@@ -23,16 +24,34 @@ class DatabaseManager:
         'auto_save_metadata'
     }
 
-    def __init__(self, db_path: str = "upm.db"):
-        """Initialize database connection and create tables if they don't exist"""
+    def __init__(self, db_path: str = "upm.db", enable_auto_backup: bool = True):
+        """Initialize database connection and create tables if they don't exist
+
+        Args:
+            db_path: Path to the SQLite database file
+            enable_auto_backup: Whether to enable automatic backups (default: True)
+        """
         self.db_path = db_path
         # P0 Fix: Use thread-local storage for connections to prevent race conditions
         self._local = threading.local()
         self._lock = threading.Lock()
+
+        # P1 Enhancement: Initialize backup manager
+        self.backup_enabled = enable_auto_backup
+        if self.backup_enabled:
+            self.backup_manager = DatabaseBackup(db_path=db_path)
+            self._operation_count = 0
+            self._backup_interval = 50  # Backup every 50 operations
+
         # Initialize connection for main thread
         try:
             self.connect()
             self.create_tables()
+
+            # Create initial backup after initialization
+            if self.backup_enabled:
+                self._maybe_backup(force=True, backup_type='daily')
+
         except Exception as e:
             # P0 Fix: Prevent resource leak on initialization failure
             self.close()
@@ -130,6 +149,114 @@ class DatabaseManager:
 
         self.conn.commit()
 
+    # ==================== Backup Methods ====================
+
+    def _increment_operation_count(self):
+        """Increment operation counter and trigger backup if needed"""
+        if not self.backup_enabled:
+            return
+
+        self._operation_count += 1
+        if self._operation_count >= self._backup_interval:
+            self._maybe_backup()
+            self._operation_count = 0
+
+    def _maybe_backup(self, force: bool = False, backup_type: str = 'auto'):
+        """Create a backup if needed
+
+        Args:
+            force: Force backup regardless of schedule
+            backup_type: Type of backup (auto, daily, weekly, monthly, manual)
+        """
+        if not self.backup_enabled:
+            return
+
+        try:
+            # Check if we need a backup
+            if force or self.backup_manager.should_create_backup(backup_type):
+                backup_file = self.backup_manager.create_backup(
+                    backup_type=backup_type,
+                    compress=True
+                )
+                if backup_file:
+                    print(f"✅ Database backed up: {os.path.basename(backup_file)}")
+
+                    # Rotate old backups
+                    self.backup_manager.rotate_backups()
+
+        except Exception as e:
+            # Don't fail the operation if backup fails
+            print(f"⚠️  Backup failed: {e}")
+
+    def create_manual_backup(self) -> Optional[str]:
+        """Create a manual backup
+
+        Returns:
+            Path to backup file or None if failed
+        """
+        if not self.backup_enabled:
+            print("⚠️  Automatic backups are disabled")
+            return None
+
+        try:
+            backup_file = self.backup_manager.create_backup(
+                backup_type='manual',
+                compress=True
+            )
+            if backup_file:
+                print(f"✅ Manual backup created: {backup_file}")
+            return backup_file
+        except Exception as e:
+            print(f"❌ Manual backup failed: {e}")
+            return None
+
+    def list_backups(self) -> List[Dict]:
+        """List all available backups
+
+        Returns:
+            List of backup information dictionaries
+        """
+        if not self.backup_enabled:
+            return []
+
+        return self.backup_manager.list_backups()
+
+    def restore_from_backup(self, backup_file: str) -> bool:
+        """Restore database from a backup file
+
+        Args:
+            backup_file: Path to backup file
+
+        Returns:
+            True if restore succeeded, False otherwise
+        """
+        if not self.backup_enabled:
+            print("⚠️  Automatic backups are disabled")
+            return False
+
+        try:
+            # Close all connections before restore
+            self.close()
+
+            # Restore
+            success = self.backup_manager.restore_backup(backup_file)
+
+            # Reconnect
+            self.connect()
+
+            if success:
+                print(f"✅ Database restored from: {backup_file}")
+            return success
+
+        except Exception as e:
+            print(f"❌ Restore failed: {e}")
+            # Attempt to reconnect
+            try:
+                self.connect()
+            except:
+                pass
+            return False
+
     # ==================== Installed Apps Methods ====================
 
     def add_installed_app(self, name: str, package_name: str, package_type: str,
@@ -141,6 +268,7 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (name, package_name, package_type, source_repo, version, description))
             self.conn.commit()
+            self._increment_operation_count()
             return True
         except sqlite3.IntegrityError:
             # App already exists
@@ -154,6 +282,7 @@ class DatabaseManager:
             (datetime.now(timezone.utc), package_name)
         )
         self.conn.commit()
+        self._increment_operation_count()
 
     def get_installed_apps(self, package_type: Optional[str] = None) -> List[Dict]:
         """Get list of installed apps, optionally filtered by package type"""

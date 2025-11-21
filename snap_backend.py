@@ -7,6 +7,8 @@ import subprocess
 import json
 import re
 from typing import List, Dict, Optional, Tuple
+from rate_limiter import rate_limit
+from package_verification import PackageVerifier
 
 
 def validate_snap_name(snap_name: str) -> bool:
@@ -30,6 +32,7 @@ class SnapBackend:
         """Initialize Snap backend"""
         self.package_type = "snap"
         self.source_repo = "Snap Store"
+        self.verifier = PackageVerifier()
 
     def is_available(self) -> bool:
         """Check if Snap is available on the system"""
@@ -55,6 +58,7 @@ class SnapBackend:
         except Exception:
             return False
 
+    @rate_limit('snap', wait=True)
     def search_packages(self, query: str, limit: int = 100) -> List[Dict]:
         """Search for packages in Snap Store
 
@@ -215,6 +219,16 @@ class SnapBackend:
         # P0 Fix: Validate snap name to prevent command injection
         if not validate_snap_name(package_name):
             return False, f"Invalid snap name: {package_name}"
+
+        # P1 Enhancement: Verify package signature before installation
+        print(f"🔐 Verifying package signature for {package_name}...")
+        verified, verify_msg = self.verifier.verify_snap_signature(package_name)
+        if not verified:
+            print(f"⚠️  Warning: {verify_msg}")
+            # Continue with installation but warn user
+            # Snap has built-in signature verification, so this is informational
+        else:
+            print(verify_msg)
 
         try:
             cmd = ['pkexec', 'snap', 'install', package_name]
