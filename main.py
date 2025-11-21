@@ -28,7 +28,9 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)
 
     # P0 Fix: Maximum total results to prevent DoS from memory exhaustion
-    MAX_TOTAL_RESULTS = 200
+    # Increased from 200 to 450 for better coverage while maintaining safety
+    MAX_TOTAL_RESULTS = 450
+    MAX_PER_SOURCE = 150  # Maximum results per package source
 
     def __init__(self, backends, query):
         super().__init__()
@@ -46,8 +48,8 @@ class SearchWorker(QThread):
                     if remaining <= 0:
                         break
 
-                    # Request only what we have capacity for
-                    limit = min(50, remaining)
+                    # Request only what we have capacity for (150 per source max)
+                    limit = min(self.MAX_PER_SOURCE, remaining)
                     packages = backend.search_packages(self.query, limit=limit)
                     results.extend(packages[:remaining])  # Ensure we don't exceed limit
                 except Exception as e:
