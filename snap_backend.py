@@ -5,7 +5,22 @@ Handles Snap operations including search, install, uninstall, and package info
 
 import subprocess
 import json
+import re
 from typing import List, Dict, Optional, Tuple
+
+
+def validate_snap_name(snap_name: str) -> bool:
+    """
+    P0 Fix: Validate snap name to prevent command injection
+
+    Snap names can contain lowercase letters, numbers, and hyphens
+    """
+    if not snap_name or len(snap_name) > 200:
+        return False
+
+    # Snap naming rules
+    pattern = r'^[a-z0-9][a-z0-9-]*$'
+    return bool(re.match(pattern, snap_name))
 
 
 class SnapBackend:
@@ -197,6 +212,10 @@ class SnapBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate snap name to prevent command injection
+        if not validate_snap_name(package_name):
+            return False, f"Invalid snap name: {package_name}"
+
         try:
             cmd = ['pkexec', 'snap', 'install', package_name]
             if classic:
@@ -232,6 +251,10 @@ class SnapBackend:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # P0 Fix: Validate snap name to prevent command injection
+        if not validate_snap_name(package_name):
+            return False, f"Invalid snap name: {package_name}"
+
         try:
             result = subprocess.run(
                 ['pkexec', 'snap', 'remove', package_name],

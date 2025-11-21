@@ -6,6 +6,7 @@ Main application entry point
 
 import sys
 import os
+from functools import partial
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QTabWidget, QLabel, QLineEdit, QPushButton,
                              QTableWidget, QTableWidgetItem, QMessageBox, QComboBox,
@@ -26,6 +27,9 @@ class SearchWorker(QThread):
     finished = pyqtSignal(list)
     error = pyqtSignal(str)
 
+    # P0 Fix: Maximum total results to prevent DoS from memory exhaustion
+    MAX_TOTAL_RESULTS = 200
+
     def __init__(self, backends, query):
         super().__init__()
         self.backends = backends
@@ -37,10 +41,22 @@ class SearchWorker(QThread):
             results = []
             for backend in self.backends:
                 try:
-                    packages = backend.search_packages(self.query, limit=50)
-                    results.extend(packages)
+                    # Calculate remaining capacity
+                    remaining = self.MAX_TOTAL_RESULTS - len(results)
+                    if remaining <= 0:
+                        break
+
+                    # Request only what we have capacity for
+                    limit = min(50, remaining)
+                    packages = backend.search_packages(self.query, limit=limit)
+                    results.extend(packages[:remaining])  # Ensure we don't exceed limit
                 except Exception as e:
                     print(f"Error searching {backend.package_type}: {str(e)}")
+
+            # P0 Fix: Final safety check to ensure we never exceed the limit
+            if len(results) > self.MAX_TOTAL_RESULTS:
+                results = results[:self.MAX_TOTAL_RESULTS]
+
             self.finished.emit(results)
         except Exception as e:
             self.error.emit(str(e))
@@ -421,9 +437,10 @@ class UnifiedPackageManager(QMainWindow):
             self.search_table.setItem(row, 4, QTableWidgetItem(package['source_repo']))
 
             # Install button
+            # P0 Fix: Use functools.partial instead of lambda to prevent memory leak
             install_button = QPushButton("Install" if not package.get('installed') else "Installed")
             install_button.setEnabled(not package.get('installed'))
-            install_button.clicked.connect(lambda checked, p=package: self.install_package(p))
+            install_button.clicked.connect(partial(self.install_package, package))
             self.search_table.setCellWidget(row, 5, install_button)
 
     def search_error(self, error):
@@ -650,8 +667,9 @@ class UnifiedPackageManager(QMainWindow):
             self.installed_table.setItem(row, 4, QTableWidgetItem(app['source_repo']))
 
             # Uninstall button
+            # P0 Fix: Use functools.partial instead of lambda to prevent memory leak
             uninstall_button = QPushButton("Uninstall")
-            uninstall_button.clicked.connect(lambda checked, a=app: self.uninstall_package(a))
+            uninstall_button.clicked.connect(partial(self.uninstall_package, app))
             self.installed_table.setCellWidget(row, 5, uninstall_button)
 
     # ==================== Settings Functions ====================
@@ -722,11 +740,15 @@ class UnifiedPackageManager(QMainWindow):
                 self.repo_table.setItem(row, 2, QTableWidgetItem(repo['type']))
 
                 # Enabled checkbox
+                # P0 Fix: Use functools.partial instead of lambda to prevent memory leak
                 enabled_checkbox = QCheckBox()
                 enabled_checkbox.setChecked(repo['enabled'])
-                enabled_checkbox.stateChanged.connect(
-                    lambda state, repo_id=repo['id']: self.toggle_repository(repo_id, state == Qt.Checked)
-                )
+                # Note: We need a wrapper function for stateChanged since it passes state
+                def make_toggle_handler(repo_id):
+                    def handler(state):
+                        self.toggle_repository(repo_id, state == Qt.Checked)
+                    return handler
+                enabled_checkbox.stateChanged.connect(make_toggle_handler(repo['id']))
                 # Center the checkbox
                 checkbox_widget = QWidget()
                 checkbox_layout = QHBoxLayout(checkbox_widget)
@@ -1109,11 +1131,23 @@ def main():
     window = UnifiedPackageManager()
     window.show()
 
-    # Defer slow operations until after the window is shown and event loop starts
+    # P0 Fix: Defer slow operations until after the window is shown and event loop starts
     # This prevents the black screen issue caused by blocking the GUI thread
-    from PyQt5.QtCore import QTimer
-    QTimer.singleShot(50, window.check_system_status)  # Check system first
-    QTimer.singleShot(100, window.load_installed_apps)  # Then load apps
+    # Use longer delays to ensure window is fully initialized
+    def safe_check_system():
+        try:
+            window.check_system_status()
+        except Exception as e:
+            print(f"Error checking system status: {e}")
+
+    def safe_load_apps():
+        try:
+            window.load_installed_apps()
+        except Exception as e:
+            print(f"Error loading installed apps: {e}")
+
+    QTimer.singleShot(100, safe_check_system)  # Check system first
+    QTimer.singleShot(200, safe_load_apps)  # Then load apps
 
     sys.exit(app.exec_())
 
