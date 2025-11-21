@@ -331,12 +331,12 @@ class TestDatabaseCore:
         assert repos[0]['enabled'] == True
 
         # Toggle repository
-        db.toggle_custom_repository(repo_id, False)
+        db.toggle_repository(repo_id, False)
         repos = db.get_custom_repositories()
         assert repos[0]['enabled'] == False
 
         # Delete repository
-        db.delete_custom_repository(repo_id)
+        db.remove_custom_repository(repo_id)
         repos = db.get_custom_repositories()
         assert len(repos) == 0
 
