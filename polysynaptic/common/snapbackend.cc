@@ -531,8 +531,14 @@ SnapBackend::CommandResult SnapBackend::executeCommand(
     int stdoutPipe[2];
     int stderrPipe[2];
 
-    if (pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
-        result.stderr = "Failed to create pipes";
+    if (pipe(stdoutPipe) != 0) {
+        result.stderr = "Failed to create stdout pipe";
+        return result;
+    }
+    if (pipe(stderrPipe) != 0) {
+        result.stderr = "Failed to create stderr pipe";
+        close(stdoutPipe[0]);
+        close(stdoutPipe[1]);
         return result;
     }
 
