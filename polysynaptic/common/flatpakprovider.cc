@@ -137,7 +137,7 @@ std::vector<UnifiedPackage> FlatpakProvider::search(
                 filtered.push_back(pkg);
             }
 
-            if (filtered.size() >= options.maxResults) break;
+            if (options.maxResults != 0 && filtered.size() >= options.maxResults) break;
         }
 
         return filtered;
@@ -162,7 +162,7 @@ std::vector<UnifiedPackage> FlatpakProvider::search(
     auto packages = parseFlatpakSearch(result.stdout);
 
     // Limit results
-    if (packages.size() > options.maxResults) {
+    if (options.maxResults != 0 && packages.size() > options.maxResults) {
         packages.resize(options.maxResults);
     }
 

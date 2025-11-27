@@ -114,7 +114,9 @@ std::vector<UnifiedPackage> APTProvider::search(
     std::string lowerQuery = query;
     std::transform(lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
 
-    for (unsigned int i = 0; i < _lister->count() && results.size() < options.maxResults; i++) {
+    const bool unlimitedResults = (options.maxResults == 0);
+    for (unsigned int i = 0; i < _lister->count() &&
+         (unlimitedResults || results.size() < options.maxResults); i++) {
         RPackage* pkg = _lister->getElement(i);
         if (!pkg) continue;
 
