@@ -450,19 +450,22 @@ OperationResult FlatpakBackend::removePackage(
         progress(0.1, "Removing " + packageId + "...");
     }
 
-    // Try user first, then system
-    vector<string> userArgs = {"flatpak", "uninstall", "-y", "--user", packageId};
+    // Try user first, then system; include delete-data if purge requested
+    vector<string> userArgs = {"flatpak", "uninstall", "-y", "--user"};
+    if (purge) {
+        userArgs.push_back("--delete-data");
+    }
+    userArgs.push_back(packageId);
     auto result = executeCommand(userArgs, 300);
 
     if (!result.success || result.exitCode != 0) {
         // Try system-wide (requires root)
-        vector<string> systemArgs = {"pkexec", "flatpak", "uninstall", "-y", "--system", packageId};
+        vector<string> systemArgs = {"pkexec", "flatpak", "uninstall", "-y", "--system"};
+        if (purge) {
+            systemArgs.push_back("--delete-data");
+        }
+        systemArgs.push_back(packageId);
         result = executeCommand(systemArgs, 300);
-    }
-
-    // Optionally delete data
-    if (purge && result.success && result.exitCode == 0) {
-        executeCommand({"flatpak", "uninstall", "-y", "--delete-data", packageId}, 60);
     }
 
     if (progress) {
