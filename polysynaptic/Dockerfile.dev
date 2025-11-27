@@ -1,0 +1,105 @@
+# PolySynaptic Development Container
+#
+# This Dockerfile provides a reproducible build environment for PolySynaptic.
+# It includes all dependencies for building and testing across APT, Snap, and Flatpak.
+#
+# Build:
+#   docker build -f Dockerfile.dev -t polysynaptic-dev .
+#
+# Run interactive:
+#   docker run -it --rm -v $(pwd):/workspace polysynaptic-dev
+#
+# Run tests:
+#   docker run --rm -v $(pwd):/workspace polysynaptic-dev make -C /workspace/polysynaptic check
+
+FROM ubuntu:22.04
+
+LABEL maintainer="PolySynaptic Contributors"
+LABEL description="Development environment for PolySynaptic multi-backend package manager"
+LABEL version="1.0"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set locale
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    intltool \
+    gettext \
+    # GTK3 development
+    libgtk-3-dev \
+    libvte-2.91-dev \
+    # APT development
+    libapt-pkg-dev \
+    apt-utils \
+    # Optional features
+    libxapian-dev \
+    # Testing
+    check \
+    # Documentation
+    doxygen \
+    graphviz \
+    # Utilities
+    git \
+    curl \
+    wget \
+    vim \
+    less \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/*
+
+# Install snapd for Snap backend testing (note: doesn't run in container,
+# but allows compilation)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    snapd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install flatpak for Flatpak backend testing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    flatpak \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for development
+ARG USERNAME=developer
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up workspace
+WORKDIR /workspace
+
+# Create build directories
+RUN mkdir -p /workspace/build /workspace/dist
+
+# Set permissions
+RUN chown -R $USERNAME:$USERNAME /workspace
+
+# Switch to non-root user
+USER $USERNAME
+
+# Environment variables for development
+ENV PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+ENV CFLAGS="-g -O0 -Wall -Wextra"
+ENV CXXFLAGS="-g -O0 -Wall -Wextra -std=c++14"
+
+# Entry point
+COPY --chown=$USERNAME:$USERNAME docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh 2>/dev/null || true
+
+CMD ["/bin/bash"]

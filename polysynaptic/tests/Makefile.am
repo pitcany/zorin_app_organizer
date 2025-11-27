@@ -4,7 +4,7 @@ AM_CPPFLAGS = -I${top_srcdir}/common -I${top_srcdir}/gtk \
 	@GTK_CFLAGS@ @VTE_CFLAGS@ @LP_CFLAGS@ $(LIBTAGCOLL_CFLAGS) $(LIBEPT_CFLAGS) \
 	-O0 -g3 -std=c++14
 
-noinst_PROGRAMS = test_rpackage test_rpackageview test_gtkpkglist test_rpackagefilter test_backends
+noinst_PROGRAMS = test_rpackage test_rpackageview test_gtkpkglist test_rpackagefilter test_backends test_providers
 
 LDADD = \
 	${top_builddir}/common/libsynaptic.a\
@@ -28,9 +28,13 @@ test_gtkpkglist_SOURCES= test_gtkpkglist.cc \
 # PolySynaptic backend tests
 test_backends_SOURCES= test_backends.cc
 
+# PolySynaptic provider integration tests
+test_providers_SOURCES= test_providers.cc
+
 # Run all tests
-check-local: test_backends
+check-local: test_backends test_providers
 	./test_backends
+	./test_providers
 
 CLEANFILES= $(wildcard *_wrap.*) $(wildcard *~) 
 

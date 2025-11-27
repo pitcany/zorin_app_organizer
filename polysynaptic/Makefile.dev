@@ -1,0 +1,234 @@
+# PolySynaptic Development Makefile
+#
+# This Makefile provides convenient targets for development workflows.
+# For production builds, use the autotools-based build system.
+#
+# Quick start:
+#   make -f Makefile.dev setup    # First-time setup
+#   make -f Makefile.dev build    # Build the project
+#   make -f Makefile.dev test     # Run tests
+#   make -f Makefile.dev docker   # Build in Docker
+
+.PHONY: all setup configure build test clean distclean docker docker-build \
+        docker-test docker-shell lint format check-deps install
+
+# Configuration
+DOCKER_IMAGE := polysynaptic-dev
+BUILD_DIR := build
+PREFIX := /usr/local
+
+# Default target
+all: build
+
+# =============================================================================
+# Development Setup
+# =============================================================================
+
+# First-time setup
+setup: check-deps configure
+	@echo "Setup complete. Run 'make -f Makefile.dev build' to build."
+
+# Check for required dependencies
+check-deps:
+	@echo "Checking dependencies..."
+	@which pkg-config > /dev/null || (echo "ERROR: pkg-config not found" && exit 1)
+	@which autoconf > /dev/null || (echo "ERROR: autoconf not found" && exit 1)
+	@which automake > /dev/null || (echo "ERROR: automake not found" && exit 1)
+	@pkg-config --exists gtk+-3.0 || (echo "ERROR: GTK3 development files not found" && exit 1)
+	@pkg-config --exists apt-pkg || (echo "WARNING: libapt-pkg-dev not found - APT backend will be limited")
+	@echo "All core dependencies found."
+
+# Generate configure script
+autogen:
+	@echo "Running autogen..."
+	./autogen.sh
+
+# Configure the build
+configure: autogen
+	@echo "Configuring..."
+	@mkdir -p $(BUILD_DIR)
+	cd $(BUILD_DIR) && ../configure --prefix=$(PREFIX) \
+		--enable-debug \
+		CXXFLAGS="-g -O0 -Wall -std=c++14"
+
+# =============================================================================
+# Build Targets
+# =============================================================================
+
+# Build the project
+build:
+	@if [ ! -f $(BUILD_DIR)/Makefile ]; then \
+		echo "Run 'make -f Makefile.dev configure' first"; \
+		exit 1; \
+	fi
+	$(MAKE) -C $(BUILD_DIR)
+
+# Build with verbose output
+build-verbose:
+	$(MAKE) -C $(BUILD_DIR) V=1
+
+# Build just common library
+build-common:
+	$(MAKE) -C $(BUILD_DIR)/common
+
+# Build just GTK frontend
+build-gtk:
+	$(MAKE) -C $(BUILD_DIR)/gtk
+
+# =============================================================================
+# Test Targets
+# =============================================================================
+
+# Run all tests
+test:
+	$(MAKE) -C $(BUILD_DIR) check
+
+# Run backend tests only
+test-backends:
+	$(MAKE) -C $(BUILD_DIR)/tests test_backends
+	$(BUILD_DIR)/tests/test_backends
+
+# Run with verbose output
+test-verbose:
+	$(MAKE) -C $(BUILD_DIR) check VERBOSE=1
+
+# Run specific test
+test-%:
+	$(MAKE) -C $(BUILD_DIR)/tests $*
+	$(BUILD_DIR)/tests/$*
+
+# =============================================================================
+# Code Quality
+# =============================================================================
+
+# Run static analysis (requires cppcheck)
+lint:
+	@which cppcheck > /dev/null || (echo "ERROR: cppcheck not found" && exit 1)
+	cppcheck --enable=all --std=c++14 \
+		-I common -I gtk \
+		--suppress=missingIncludeSystem \
+		common/*.cc gtk/*.cc
+
+# Format code (requires clang-format)
+format:
+	@which clang-format > /dev/null || (echo "ERROR: clang-format not found" && exit 1)
+	find common gtk tests -name "*.cc" -o -name "*.h" | \
+		xargs clang-format -i -style=file
+
+# Check formatting without making changes
+format-check:
+	@which clang-format > /dev/null || (echo "ERROR: clang-format not found" && exit 1)
+	find common gtk tests -name "*.cc" -o -name "*.h" | \
+		xargs clang-format -n -Werror -style=file
+
+# =============================================================================
+# Docker Development
+# =============================================================================
+
+# Build Docker development image
+docker:
+	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
+
+# Build project inside Docker
+docker-build: docker
+	docker run --rm -v $(PWD):/workspace $(DOCKER_IMAGE) \
+		bash -c "cd /workspace && make -f Makefile.dev setup build"
+
+# Run tests inside Docker
+docker-test: docker
+	docker run --rm -v $(PWD):/workspace $(DOCKER_IMAGE) \
+		bash -c "cd /workspace && make -f Makefile.dev test"
+
+# Interactive shell in Docker
+docker-shell: docker
+	docker run -it --rm -v $(PWD):/workspace $(DOCKER_IMAGE) bash
+
+# Clean Docker image
+docker-clean:
+	docker rmi $(DOCKER_IMAGE) 2>/dev/null || true
+
+# =============================================================================
+# Installation
+# =============================================================================
+
+# Install to prefix
+install:
+	$(MAKE) -C $(BUILD_DIR) install
+
+# Install to specific directory (for packaging)
+install-dest:
+	$(MAKE) -C $(BUILD_DIR) install DESTDIR=$(DESTDIR)
+
+# Uninstall
+uninstall:
+	$(MAKE) -C $(BUILD_DIR) uninstall
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+# Generate documentation (requires Doxygen)
+docs:
+	@which doxygen > /dev/null || (echo "ERROR: doxygen not found" && exit 1)
+	doxygen Doxyfile
+
+# =============================================================================
+# Cleanup
+# =============================================================================
+
+# Clean build artifacts
+clean:
+	@if [ -f $(BUILD_DIR)/Makefile ]; then \
+		$(MAKE) -C $(BUILD_DIR) clean; \
+	fi
+
+# Full clean (removes build directory)
+distclean:
+	rm -rf $(BUILD_DIR)
+	rm -rf autom4te.cache
+	rm -f config.log config.status
+	find . -name "*.o" -delete
+	find . -name "*.a" -delete
+	find . -name "*~" -delete
+
+# =============================================================================
+# Help
+# =============================================================================
+
+help:
+	@echo "PolySynaptic Development Makefile"
+	@echo ""
+	@echo "Setup targets:"
+	@echo "  setup          - First-time development setup"
+	@echo "  check-deps     - Check for required dependencies"
+	@echo "  configure      - Configure the build"
+	@echo ""
+	@echo "Build targets:"
+	@echo "  build          - Build the project"
+	@echo "  build-verbose  - Build with verbose output"
+	@echo "  build-common   - Build common library only"
+	@echo "  build-gtk      - Build GTK frontend only"
+	@echo ""
+	@echo "Test targets:"
+	@echo "  test           - Run all tests"
+	@echo "  test-backends  - Run backend tests only"
+	@echo "  test-verbose   - Run tests with verbose output"
+	@echo ""
+	@echo "Code quality:"
+	@echo "  lint           - Run static analysis"
+	@echo "  format         - Format source code"
+	@echo "  format-check   - Check code formatting"
+	@echo ""
+	@echo "Docker targets:"
+	@echo "  docker         - Build Docker development image"
+	@echo "  docker-build   - Build project in Docker"
+	@echo "  docker-test    - Run tests in Docker"
+	@echo "  docker-shell   - Interactive Docker shell"
+	@echo ""
+	@echo "Installation:"
+	@echo "  install        - Install to $(PREFIX)"
+	@echo "  uninstall      - Uninstall from $(PREFIX)"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  distclean      - Full clean including build dir"

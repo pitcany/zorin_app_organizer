@@ -61,6 +61,16 @@ libsynaptic_a_SOURCES =\
 	flatpakbackend.h \
 	flatpakbackend.cc \
 	backendmanager.h \
-	backendmanager.cc 
+	backendmanager.cc \
+	packagesourceprovider.h \
+	structuredlog.h \
+	aptprovider.h \
+	aptprovider.cc \
+	snapprovider.h \
+	snapprovider.cc \
+	flatpakprovider.h \
+	flatpakprovider.cc \
+	packageranking.h \
+	packageranking.cc
 
 

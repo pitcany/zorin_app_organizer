@@ -102,7 +102,11 @@ POLYSYNAPTIC_UI_SOURCES = \
 	rgunifiedview.h \
 	rgunifiedview.cc \
 	rgbackendsettings.h \
-	rgbackendsettings.cc
+	rgbackendsettings.cc \
+	rgsourcespane.h \
+	rgsourcespane.cc \
+	rgdebugpanel.h \
+	rgdebugpanel.cc
 
 # PolySynaptic includes all sources
 polysynaptic_SOURCES = $(SYNAPTIC_UI_SOURCES) $(POLYSYNAPTIC_UI_SOURCES)
