@@ -310,13 +310,14 @@ vector<string> AptBackend::getRepositories()
 
     if (sources.ReadSources()) {
         for (const auto& rec : sources.SourceRecords) {
-            if (rec.Type != SourcesList::Comment &&
-                rec.Type != SourcesList::Disabled) {
+            if (rec->Type != SourcesList::Comment &&
+                rec->Type != SourcesList::Disabled) {
                 ostringstream ss;
-                ss << (rec.Type == SourcesList::Deb ? "deb " : "deb-src ")
-                   << rec.URI << " " << rec.Dist;
-                for (const auto& sec : rec.Sections) {
-                    ss << " " << sec;
+                ss << (rec->Type == SourcesList::Deb ? "deb " : "deb-src ")
+                   << rec->URI << " " << rec->Dist;
+                // Sections is a C-style array with NumSections elements
+                for (unsigned short i = 0; i < rec->NumSections; i++) {
+                    ss << " " << rec->Sections[i];
                 }
                 repos.push_back(ss.str());
             }

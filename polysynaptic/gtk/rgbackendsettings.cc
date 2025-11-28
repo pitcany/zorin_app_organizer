@@ -11,10 +11,13 @@
 #include "rgbackendsettings.h"
 
 RGBackendSettingsWindow::RGBackendSettingsWindow(RGWindow* parent, BackendManager* manager)
-    : RGGtkBuilderWindow(parent, "backend_settings")
+    : RGWindow()
     , _manager(manager)
 {
     createWidgets();
+    if (parent != NULL) {
+        gtk_window_set_transient_for(GTK_WINDOW(_win), GTK_WINDOW(parent->window()));
+    }
     loadCurrentSettings();
 }
 

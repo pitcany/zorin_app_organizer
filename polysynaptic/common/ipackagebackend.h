@@ -41,6 +41,12 @@
 #ifndef _IPACKAGEBACKEND_H_
 #define _IPACKAGEBACKEND_H_
 
+// X11's Xlib.h defines Success as a macro (value 0), which conflicts with our
+// OperationResult::Success() method. We must #undef it to avoid compilation errors.
+#ifdef Success
+#undef Success
+#endif
+
 #include <string>
 #include <vector>
 #include <memory>

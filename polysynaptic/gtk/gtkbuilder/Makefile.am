@@ -1,4 +1,4 @@
-gtkbuilderdir = $(datadir)/synaptic/gtkbuilder/
+gtkbuilderdir = $(datadir)/polysynaptic/gtkbuilder/
 
 gtkbuilder_DATA = *.ui
 

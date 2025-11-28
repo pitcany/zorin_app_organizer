@@ -70,7 +70,7 @@ bool ShowHelp(CommandLine & CmdL)
       _config->Find("Synaptic::MyName", PACKAGE) + " " VERSION
 #endif
       "\n\n" <<
-      _("Usage: synaptic [options]\n") <<
+      _("Usage: polysynaptic [options]\n") <<
       _("-h   This help text\n") <<
       _("-r   Open in the repository screen\n") <<
       _("-f=? Give an alternative filter file\n") <<
@@ -331,14 +331,14 @@ void check_and_aquire_lock()
 	 // message that we can't turn a non-interactive into a interactive
 	 // one
 	 msg = g_strdup_printf("<big><b>%s</b></big>\n\n%s",
-			       _("Another synaptic is running"),
-			       _("There is another synaptic running in "
+			       _("Another polysynaptic is running"),
+			       _("There is another polysynaptic running in "
 				 "interactive mode. Please close it first. "
 				 ));
       } else if(runsNonInteractive > 0) {
 	 msg = g_strdup_printf("<big><b>%s</b></big>\n\n%s",
-			       _("Another synaptic is running"),
-			       _("There is another synaptic running in "
+			       _("Another polysynaptic is running"),
+			       _("There is another polysynaptic running in "
 				 "non-interactive mode. Please wait for it "
 				 "to finish first."
 				 ));
@@ -356,7 +356,7 @@ void check_and_aquire_lock()
       }
       g_free(msg);
 
-      cout << "Another synaptic is running. Trying to bring it to the foreground" << endl;
+      cout << "Another polysynaptic is running. Trying to bring it to the foreground" << endl;
       kill(LockedApp, SIGUSR1);
       exit(0);
    }
@@ -411,8 +411,8 @@ int main(int argc, char **argv)
       std::cout <<
          _("Failed to initialize GTK.\n") <<
          "\n" <<
-         _("Probably you're running Synaptic on Wayland with root permission.\n") <<
-         _("Please restart your session without Wayland, or run Synaptic without root permission\n");
+         _("Probably you're running PolySynaptic on Wayland with root permission.\n") <<
+         _("Please restart your session without Wayland, or run PolySynaptic without root permission\n");
       exit(1);
    };
    //XSynchronize(dpy, 1);
@@ -432,7 +432,7 @@ int main(int argc, char **argv)
    if (getuid() != 0) {
       RGUserDialog userDialog;
       userDialog.warning(g_strdup_printf("<b><big>%s</big></b>\n\n%s",
-                                         _("Starting \"Synaptic Package Manager\" without "
+                                         _("Starting \"PolySynaptic Package Manager\" without "
                                            "administrative privileges"),
 				         _("You will not be able to apply "
 				           "any changes, but you can still "
@@ -441,7 +441,7 @@ int main(int argc, char **argv)
 					   "for them.")));
    }
 
-   if (!RInitConfiguration("synaptic.conf")) {
+   if (!RInitConfiguration("polysynaptic.conf")) {
       RGUserDialog userDialog;
       userDialog.showErrors();
       exit(1);
@@ -489,9 +489,9 @@ int main(int argc, char **argv)
       _config->Set("APT::Default-Release", s);
 
 #ifndef HAVE_RPM
-   mainWindow->setTitle(_("Synaptic Package Manager "));
+   mainWindow->setTitle(_("PolySynaptic Package Manager "));
 #else
-   mainWindow->setTitle(_config->Find("Synaptic::MyName", "Synaptic"));
+   mainWindow->setTitle(_config->Find("Synaptic::MyName", "PolySynaptic"));
 #endif
    // this is for stuff like "synaptic -t `uname -n`"
    s = _config->Find("Volatile::MyName","");

@@ -34,10 +34,10 @@
 #include <future>
 #include <atomic>
 
-namespace PolySynaptic {
-
-// Forward declarations
+// Forward declaration in global namespace (RPackageLister is a legacy Synaptic class)
 class RPackageLister;
+
+namespace PolySynaptic {
 
 /**
  * Transaction - Represents a set of pending package operations

@@ -2,7 +2,7 @@
 
 SUBDIRS = hicolor
 
-buttondir =  $(datadir)/synaptic/gtkbuilder
+buttondir =  $(datadir)/polysynaptic/gtkbuilder
 button_DATA = update_small.png \
 	      upgrade_small.png \
 	      distupgrade_small.png\
@@ -14,12 +14,12 @@ button_DATA = update_small.png \
 	      stock_menu_about.png \
 	      stock_help-book.png
 
-fetchstatusdir = $(datadir)/synaptic/pixmaps
+fetchstatusdir = $(datadir)/polysynaptic/pixmaps
 fetchstatus_DATA = green.png \
 		   yellow.png \
 		   red.png
 
-abouticondir = $(datadir)/synaptic/gtkbuilder
+abouticondir = $(datadir)/polysynaptic/gtkbuilder
 abouticon_DATA = deb.png \
 		 cnc.png \
 		 logo.png

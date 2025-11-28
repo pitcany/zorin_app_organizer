@@ -142,7 +142,7 @@ read_fd(int fd, void *ptr, size_t nbytes, int *recvfd)
 }
 /* end read_fd */
 
-#define UNIXSTR_PATH "/var/run/synaptic.socket"
+#define UNIXSTR_PATH "/var/run/polysynaptic.socket"
 
 int ipc_send_fd(int fd)
 {
@@ -758,7 +758,7 @@ void RGDebInstallProgress::finishUpdate()
    switch(res) {
    case 0: // success
       gtk_image_set_from_icon_name(GTK_IMAGE(img),
-			      "synaptic", GTK_ICON_SIZE_DIALOG);
+			      "polysynaptic", GTK_ICON_SIZE_DIALOG);
       break;
    case 1: // error
       gtk_image_set_from_icon_name(GTK_IMAGE(img), "dialog-error",

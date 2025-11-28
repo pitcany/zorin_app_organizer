@@ -427,6 +427,15 @@
                       </object>
                     </child>
                     <child>
+                      <object class="GtkMenuItem" id="menu_backend_settings">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes">Package _Backends...</property>
+                        <property name="use_underline">True</property>
+                        <signal name="activate" handler="on_backend_settings_activate" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkMenuItem" id="edit_filter">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>

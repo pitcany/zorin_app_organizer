@@ -1091,7 +1091,7 @@ RGPreferencesWindow::RGPreferencesWindow(RGWindow *win,
 		       "the chosen distribution."));
    gtk_widget_set_tooltip_text(GTK_WIDGET(gtk_builder_get_object
                                    (_builder,"radiobutton_ignore")),
-			_("Let synaptic pick the best version for you. "
+			_("Let polysynaptic pick the best version for you. "
 			"If unsure use this option. "));
 
 

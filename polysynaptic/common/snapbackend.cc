@@ -132,7 +132,18 @@ vector<PackageInfo> SnapBackend::searchPackages(
         return results;  // Snap search requires a query
     }
 
-    if (!isValidSnapName(options.query)) {
+    // Note: Search queries are more permissive than snap names
+    // We don't validate against isValidSnapName here because users
+    // may search with mixed case (e.g., "Firefox") which snap find accepts.
+    // Just do basic sanitization to prevent command injection.
+    string sanitizedQuery = options.query;
+    // Remove any characters that could be shell metacharacters
+    sanitizedQuery.erase(
+        remove_if(sanitizedQuery.begin(), sanitizedQuery.end(),
+            [](char c) { return !isalnum(c) && c != '-' && c != '_' && c != ' '; }),
+        sanitizedQuery.end());
+
+    if (sanitizedQuery.empty() || sanitizedQuery.length() > 100) {
         return results;
     }
 
@@ -141,7 +152,7 @@ vector<PackageInfo> SnapBackend::searchPackages(
     }
 
     // Execute snap find
-    auto result = executeCommand({"snap", "find", options.query}, _timeoutSeconds);
+    auto result = executeCommand({"snap", "find", sanitizedQuery}, _timeoutSeconds);
 
     if (!result.success || result.exitCode != 0) {
         return results;

@@ -1,4 +1,4 @@
-# synaptic makefile
+# polysynaptic makefile
 
 SUBDIRS = data common gtk tests man pixmaps po help doc
 

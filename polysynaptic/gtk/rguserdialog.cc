@@ -80,7 +80,7 @@ bool RGUserDialog::showErrors()
 				                  _("The following details "
 						    "are provided:")));
    gtk_dialog_set_default_response(GTK_DIALOG(dia), GTK_RESPONSE_CLOSE);
-   GdkPixbuf *icon = get_gdk_pixbuf( "synaptic" );
+   GdkPixbuf *icon = get_gdk_pixbuf( "polysynaptic" );
    gtk_window_set_icon(GTK_WINDOW(dia), icon);
 
    gtk_widget_set_size_request(dia, 500, 300);
@@ -168,7 +168,7 @@ bool RGUserDialog::message(const char *msg,
    dia = gtk_message_dialog_new (GTK_WINDOW(_parentWindow),
                                  GTK_DIALOG_DESTROY_WITH_PARENT,
                                  gtkmessage, gtkbuttons, NULL);
-   GdkPixbuf *icon = get_gdk_pixbuf( "synaptic" );
+   GdkPixbuf *icon = get_gdk_pixbuf( "polysynaptic" );
    gtk_window_set_icon(GTK_WINDOW(dia), icon);
 
    gtk_message_dialog_set_markup (GTK_MESSAGE_DIALOG(dia), utf8(msg));
@@ -252,7 +252,7 @@ void RGGtkBuilderUserDialog::init(const char *name)
    }
    _dialog = GTK_WIDGET(gtk_builder_get_object(builder, main_widget));
    assert(_dialog);
-   GdkPixbuf *icon = get_gdk_pixbuf( "synaptic" );
+   GdkPixbuf *icon = get_gdk_pixbuf( "polysynaptic" );
    gtk_window_set_icon(GTK_WINDOW(_dialog), icon);
 
    gtk_window_set_position(GTK_WINDOW(_dialog),

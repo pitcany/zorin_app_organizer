@@ -13,7 +13,7 @@ int main(int argc, char **argv)
 {
    pkgInitConfig(*_config);
    pkgInitSystem(*_config, _system);
-   if (!RInitConfiguration("synaptic.conf")) {
+   if (!RInitConfiguration("polysynaptic.conf")) {
       _error->DumpErrors();
       std::exit(1);
    }

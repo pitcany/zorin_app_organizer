@@ -90,7 +90,7 @@ bool RWriteConfigFile(Configuration &Conf)
    // to config of apt if we run as root
    if (getuid() == 0) {
       string aptConfPath = _config->FindDir("Dir::Etc::parts", "/etc/apt/apt.conf.d/")
-                         + "99synaptic";
+                         + "99polysynaptic";
 
       int old_umask = umask(0022);
       ofstream aptfile(aptConfPath.c_str(), ios::out);
@@ -150,7 +150,7 @@ static bool checkConfigDir(string &path)
 
    home_dir = string(pwd->pw_dir);
    xdg_data_dir = home_dir + "/.config";
-   old_path = home_dir + "/.synaptic";
+   old_path = home_dir + "/.polysynaptic";
    buf = getenv("XDG_CONFIG_HOME");
 
    if (buf) {
@@ -169,8 +169,8 @@ static bool checkConfigDir(string &path)
      }
    }
 
-   //path = "/etc/synaptic";
-   path = xdg_data_dir + "/synaptic";
+   //path = "/etc/polysynaptic";
+   path = xdg_data_dir + "/polysynaptic";
 
    if (! CreateDirectory(home_dir, xdg_data_dir)) {
       return _error->Errno("mkdir",
@@ -268,7 +268,7 @@ bool RInitConfiguration(string confFileName)
    if (!pkgInitConfig(*_config))
       return false;
 
-   _config->Set("Program", "synaptic");
+   _config->Set("Program", "polysynaptic");
 
    if (!pkgInitSystem(*_config, _system))
       return false;

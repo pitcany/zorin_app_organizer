@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.mvo5.synaptic</id>
-  <launchable type="desktop-id">synaptic.desktop</launchable>
+  <id>io.github.pitcany.polysynaptic</id>
+  <launchable type="desktop-id">polysynaptic.desktop</launchable>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0</project_license>
-  <_name>Synaptic Package Manager</_name>
-  <developer id="io.github.mvo5">
-    <name>Michael Vogt</name>
+  <_name>PolySynaptic Package Manager</_name>
+  <developer id="io.github.pitcany">
+    <name>Pitcany</name>
   </developer>
   <_summary>Install, remove and upgrade software packages</_summary>
   <description>
     <_p>
-      Synaptic is a graphical package management tool based on GTK and APT.
-      Synaptic enables you to install, upgrade and remove software packages
+      PolySynaptic is a graphical package management tool based on GTK and APT.
+      PolySynaptic enables you to install, upgrade and remove software packages
       in a user-friendly way.
     </_p>
     <_p>
@@ -30,11 +30,11 @@
   </description>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/mvo5/synaptic/refs/heads/master/synaptic.png</image>
+      <image>https://raw.githubusercontent.com/pitcany/polysynaptic/refs/heads/master/polysynaptic.png</image>
     </screenshot>
   </screenshots>
-  <url type="homepage">https://github.com/mvo5/synaptic</url>
-  <url type="bugtracker">https://github.com/mvo5/synaptic/issues</url>
+  <url type="homepage">https://github.com/pitcany/polysynaptic</url>
+  <url type="bugtracker">https://github.com/pitcany/polysynaptic/issues</url>
   <content_rating type="oars-1.1"/>
-  <translation type="gettext">synaptic</translation>
+  <translation type="gettext">polysynaptic</translation>
 </component>

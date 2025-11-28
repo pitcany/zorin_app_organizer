@@ -17,7 +17,7 @@
 #ifndef _RGBACKENDSETTINGS_H_
 #define _RGBACKENDSETTINGS_H_
 
-#include "rggtkbuilderwindow.h"
+#include "rgwindow.h"
 #include "backendmanager.h"
 
 using namespace PolySynaptic;
@@ -26,9 +26,9 @@ using namespace PolySynaptic;
  * RGBackendSettingsWindow - Backend configuration dialog
  *
  * This dialog provides a settings interface for managing the three
- * package backends (APT, Snap, Flatpak).
+ * package backends (APT, Snap, Flatpak). Built programmatically (no .ui file).
  */
-class RGBackendSettingsWindow : public RGGtkBuilderWindow {
+class RGBackendSettingsWindow : public RGWindow {
 public:
     RGBackendSettingsWindow(RGWindow* parent, BackendManager* manager);
     virtual ~RGBackendSettingsWindow();

@@ -60,6 +60,7 @@
 
 #include "rgrepositorywin.h"
 #include "rgpreferenceswindow.h"
+#include "rgbackendsettings.h"
 #include "rgsummarywindow.h"
 #include "rgchangeswindow.h"
 #include "rgcdscanner.h"
@@ -809,6 +810,13 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, string name)
    _toolbarStyle = (GtkToolbarStyle) _config->FindI("Synaptic::ToolbarState",
                                                     (int)GTK_TOOLBAR_BOTH);
 
+   // Initialize PolySynaptic multi-backend support BEFORE buildInterface
+   // (because buildInterface creates the filter bar which needs _backendManager)
+   _backendManager = new PolySynaptic::BackendManager(_lister);
+   _backendFilterBar = NULL;
+   _unifiedPkgList = NULL;
+   _unifiedViewMode = false;
+
    // create all the interface stuff
    buildInterface();
    _userDialog = new RGUserDialog(this);
@@ -833,6 +841,7 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, string name)
    _configWin = NULL;
    _aboutPanel = NULL;
    _fmanagerWin = NULL;
+   _backendSettingsWin = NULL;
 
    GValue value = { 0, };
    g_value_init(&value, G_TYPE_STRING);
@@ -960,7 +969,7 @@ void RGMainWindow::buildInterface()
    // here is a pointer to rgmainwindow for every widget that needs it
    g_object_set_data(G_OBJECT(_win), "me", this);
 
-   GdkPixbuf *icon = get_gdk_pixbuf( "synaptic" );
+   GdkPixbuf *icon = get_gdk_pixbuf( "polysynaptic" );
    gtk_window_set_icon(GTK_WINDOW(_win), icon);
 
    gtk_window_resize(GTK_WINDOW(_win),
@@ -1053,6 +1062,10 @@ void RGMainWindow::buildInterface()
    g_signal_connect(gtk_builder_get_object(_builder, "menu_repositories"),
                     "activate",
                     G_CALLBACK(cbShowSourcesWindow), this);
+
+   g_signal_connect(gtk_builder_get_object(_builder, "menu_backend_settings"),
+                    "activate",
+                    G_CALLBACK(cbShowBackendSettingsWindow), this);
 
    g_signal_connect(gtk_builder_get_object(_builder, "menu_exit"),
                     "activate",
@@ -1578,6 +1591,34 @@ void RGMainWindow::buildInterface()
       gtk_box_set_center_widget(GTK_BOX(
             gtk_builder_get_object(_builder, "hbox_button_toolbar")), NULL);
    }
+
+   // PolySynaptic: Create backend filter bar for unified view
+   _backendFilterBar = new RGBackendFilterBar(_backendManager);
+   _backendFilterBar->setChangedCallback(
+       [this](const PolySynaptic::BackendFilter& filter) {
+           this->onBackendFilterChanged(filter);
+       });
+
+   // Add a toggle button for unified view mode
+   GtkWidget *unifiedToggle = gtk_check_button_new_with_label(_("All Sources"));
+   gtk_widget_set_tooltip_text(unifiedToggle,
+       _("Search across APT, Snap, and Flatpak"));
+   g_signal_connect(unifiedToggle, "toggled", G_CALLBACK(cbToggleUnifiedView), this);
+
+   // Pack the toggle and filter bar into the toolbar area
+   GtkWidget *toolbar = GTK_WIDGET(gtk_builder_get_object(_builder, "hbox_button_toolbar"));
+   if (toolbar) {
+      // Add toggle at the end
+      gtk_box_pack_end(GTK_BOX(toolbar), unifiedToggle, FALSE, FALSE, 5);
+      gtk_widget_show(unifiedToggle);
+
+      // Add filter bar (initially hidden until unified mode is enabled)
+      gtk_box_pack_end(GTK_BOX(toolbar), _backendFilterBar->getWidget(), FALSE, FALSE, 0);
+      gtk_widget_hide(_backendFilterBar->getWidget());
+   }
+
+   // Create unified package list model
+   _unifiedPkgList = rg_unified_pkg_list_new(_backendManager);
 
    // stuff for the non-root mode
    if(getuid() != 0) {
@@ -2124,6 +2165,107 @@ void RGMainWindow::cbShowConfigWindow(GtkWidget *self, void *data)
    me->_configWin->show();
 }
 
+void RGMainWindow::cbShowBackendSettingsWindow(GtkWidget *self, void *data)
+{
+   RGMainWindow *me = (RGMainWindow *) data;
+
+   if (me->_backendSettingsWin == NULL) {
+      me->_backendSettingsWin = new RGBackendSettingsWindow(me, me->_backendManager);
+   }
+
+   me->_backendSettingsWin->run();
+}
+
+void RGMainWindow::cbToggleUnifiedView(GtkWidget *self, void *data)
+{
+   RGMainWindow *me = (RGMainWindow *) data;
+   bool active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(self));
+
+   me->_unifiedViewMode = active;
+
+   // Show/hide the filter bar based on mode
+   if (me->_backendFilterBar) {
+      if (active) {
+         gtk_widget_show(me->_backendFilterBar->getWidget());
+      } else {
+         gtk_widget_hide(me->_backendFilterBar->getWidget());
+      }
+   }
+
+   // If switching to unified mode with existing search text, re-search
+   if (active) {
+      const gchar *searchText = gtk_entry_get_text(GTK_ENTRY(me->_entry_fast_search));
+      if (searchText && strlen(searchText) > 0) {
+         me->doUnifiedSearch(searchText);
+      }
+   } else {
+      // Switch back to legacy view - refresh with current filter
+      me->refreshTable();
+   }
+}
+
+void RGMainWindow::onBackendFilterChanged(const PolySynaptic::BackendFilter& filter)
+{
+   if (!_unifiedViewMode) return;
+
+   // Update the unified list filter
+   if (_unifiedPkgList) {
+      rg_unified_pkg_list_set_filter(_unifiedPkgList, filter);
+   }
+
+   // Re-search with new filter
+   const gchar *searchText = gtk_entry_get_text(GTK_ENTRY(_entry_fast_search));
+   if (searchText && strlen(searchText) > 0) {
+      doUnifiedSearch(searchText);
+   }
+}
+
+void RGMainWindow::doUnifiedSearch(const string& query)
+{
+   if (!_unifiedViewMode || !_backendManager) return;
+
+   setBusyCursor(true);
+
+   // Get the current filter from the filter bar
+   PolySynaptic::BackendFilter filter = PolySynaptic::BackendFilter::All();
+   if (_backendFilterBar) {
+      filter = _backendFilterBar->getFilter();
+   }
+
+   // Create search options
+   PolySynaptic::SearchOptions options;
+   options.query = query;
+   options.searchNames = true;
+   options.searchDescriptions = true;
+   options.maxResults = 200;
+
+   // Perform unified search across all backends
+   _unifiedPackages = _backendManager->searchPackages(options, filter);
+
+   // Update the tree view with results
+   updateUnifiedTreeView();
+
+   setBusyCursor(false);
+
+   // Update status text
+   gchar *statusText = g_strdup_printf(
+       _("%zu packages found across all sources"), _unifiedPackages.size());
+   setStatusText(statusText);
+   g_free(statusText);
+}
+
+void RGMainWindow::updateUnifiedTreeView()
+{
+   if (!_unifiedPkgList) return;
+
+   // Set the package data
+   rg_unified_pkg_list_set_packages(_unifiedPkgList, &_unifiedPackages);
+
+   // Set the tree view to use the unified model
+   gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView),
+                           GTK_TREE_MODEL(_unifiedPkgList));
+}
+
 void RGMainWindow::cbShowSetOptWindow(GtkWidget *self, void *data)
 {
    RGMainWindow *win = (RGMainWindow *) data;
@@ -2334,15 +2476,15 @@ void RGMainWindow::cbShowAboutPanel(GtkWidget *self, void *data)
    };
 
    gtk_show_about_dialog (NULL,
-                       "program-name", _("Synaptic Package Manager"),
+                       "program-name", _("PolySynaptic Package Manager"),
                        "version", VERSION,
-                       "logo-icon-name", "synaptic",
+                       "logo-icon-name", "polysynaptic",
                        "copyright", _("© 2001-2004 Connectiva S/A \n © 2002-2025 Michael Vogt"),
                        "authors", authors,
                        "documenters", documenters,
                        "translator-credits", _("translator-credits"),
-                       "comments", _("Package management software using apt. \n" 
-                                    "https://github.com/mvo5/synaptic/wiki \n\n"
+                       "comments", _("Package management software using apt. \n"
+                                    "https://github.com/pitcany/polysynaptic \n\n"
                                     "This program comes with absolutely no warranty. \n"
                                     "Released using the GNU General Public License, version 2 or later"),
                        NULL);
@@ -2378,21 +2520,21 @@ void RGMainWindow::cbHelpAction(GtkWidget *self, void *data)
    vector<const gchar*> cmd;
    if (is_binary_in_path("yelp")) {
       cmd.push_back("yelp");
-      cmd.push_back("ghelp:synaptic");
+      cmd.push_back("ghelp:polysynaptic");
    } else {
       cmd.push_back("/usr/bin/xdg-open");
-      cmd.push_back(PACKAGE_DATA_DIR "/synaptic/html/index.html");
+      cmd.push_back(PACKAGE_DATA_DIR "/polysynaptic/html/index.html");
    }
 
    if (cmd.empty()) {
       me->_userDialog->error(_("No help viewer is installed!\n\n"
                                "You need either the GNOME help viewer 'yelp', "
                                "or any browser setup to use xdg-open "
-                               "to view the synaptic manual.\n\n"
+                               "to view the polysynaptic manual.\n\n"
                                "Alternatively you can open the man page "
-                               "with 'man synaptic' from the "
+                               "with 'man polysynaptic' from the "
                                "command line or view the html version located "
-                               "in the 'synaptic/html' folder."));
+                               "in the 'polysynaptic/html' folder."));
       return;
    }
    RunAsSudoUserCommand(cmd);
@@ -2441,12 +2583,62 @@ void RGMainWindow::cbSelectedRow(GtkTreeSelection *selection, gpointer data)
 {
    RGMainWindow *me = (RGMainWindow *) data;
    GtkTreeIter iter;
-   RPackage *pkg;
    GList *li, *list;
 
-
-
    //cout << "RGMainWindow::cbSelectedRow()" << endl;
+
+   // PolySynaptic: Handle unified view mode
+   if (me->_unifiedViewMode) {
+      if (me->_unifiedPkgList == NULL || me->_pkgCommonTextBuffer == NULL) {
+         return;
+      }
+
+      GtkTreeModel *model = GTK_TREE_MODEL(me->_unifiedPkgList);
+      list = li = gtk_tree_selection_get_selected_rows(selection, &model);
+
+      if (li == NULL) {
+         gtk_text_buffer_set_text(me->_pkgCommonTextBuffer,
+             _("No package selected."), -1);
+         return;
+      }
+
+      li = g_list_last(li);
+      if (!gtk_tree_model_get_iter(model, &iter, (GtkTreePath *) (li->data))) {
+         g_list_foreach(list, (void (*)(void *, void *))gtk_tree_path_free, NULL);
+         g_list_free(list);
+         return;
+      }
+
+      // Get package info from unified model
+      PolySynaptic::PackageInfo *pkgInfo = NULL;
+      gtk_tree_model_get(model, &iter, UPKG_COL_PACKAGE_PTR, &pkgInfo, -1);
+
+      g_list_foreach(list, (void (*)(void *, void *))gtk_tree_path_free, NULL);
+      g_list_free(list);
+
+      if (pkgInfo == NULL) return;
+
+      // Display unified package info in the text buffer
+      gchar *info = g_strdup_printf(
+          "%s\n\n"
+          "Source: %s\n"
+          "Version: %s\n"
+          "Status: %s\n\n"
+          "%s",
+          pkgInfo->name.c_str(),
+          PolySynaptic::backendTypeToString(pkgInfo->backend),
+          pkgInfo->getDisplayVersion().c_str(),
+          PolySynaptic::installStatusToString(pkgInfo->installStatus),
+          pkgInfo->description.empty() ? pkgInfo->summary.c_str() : pkgInfo->description.c_str()
+      );
+      gtk_text_buffer_set_text(me->_pkgCommonTextBuffer, info, -1);
+      g_free(info);
+
+      return;
+   }
+
+   // Legacy APT package selection
+   RPackage *pkg;
 
    if (me->_pkgList == NULL) {
       cerr << "selectedRow(): me->_pkgTree == NULL " << endl;
@@ -2811,13 +3003,36 @@ gboolean RGMainWindow::xapianDoSearch(void *data)
    GtkStyleContext *styleContext = gtk_widget_get_style_context(me->_entry_fast_search);
 
    me->_fastSearchEventID = -1;
+
+   // PolySynaptic: Handle unified view mode separately
+   if (me->_unifiedViewMode) {
+      if (str == NULL || strlen(str) <= 1) {
+         // Clear unified search results
+         if (_fastSearchCssProvider != NULL) {
+            gtk_style_context_remove_provider(styleContext, GTK_STYLE_PROVIDER(_fastSearchCssProvider));
+         }
+         me->_unifiedPackages.clear();
+         me->updateUnifiedTreeView();
+         me->setStatusText(const_cast<char*>(_("Enter search terms to search all package sources")));
+      } else if (strlen(str) > 1) {
+         // Perform unified search
+         if (_fastSearchCssProvider != NULL) {
+            gtk_style_context_add_provider(styleContext, GTK_STYLE_PROVIDER(_fastSearchCssProvider),
+                                           GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+         }
+         me->doUnifiedSearch(str);
+      }
+      return FALSE;
+   }
+
+   // Legacy APT-only search behavior
    me->setBusyCursor(true);
    RGFlushInterface();
    if(str == NULL || strlen(str) <= 1) {
       // reset the color
       gtk_style_context_remove_provider(styleContext, GTK_STYLE_PROVIDER(_fastSearchCssProvider));
       // if the user has cleared the search, refresh the view
-      // Gtk-CRITICAL **: gtk_tree_view_unref_tree_helper: assertion `node != NULL' failed
+      // Gtk-CRITICAL :: gtk_tree_view_unref_tree_helper: assertion `node != NULL' failed
       // at us, see LP: #38397 for more information
       gtk_tree_view_set_model(GTK_TREE_VIEW(me->_treeView), NULL);
       me->_lister->reapplyFilter();

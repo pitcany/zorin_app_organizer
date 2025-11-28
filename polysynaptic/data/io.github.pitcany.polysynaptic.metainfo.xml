@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.pitcany.polysynaptic</id>
+  <launchable type="desktop-id">polysynaptic.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0</project_license>
+  <name>PolySynaptic Package Manager</name>
+  <developer id="io.github.pitcany">
+    <name>Pitcany</name>
+  </developer>
+  <summary>Install, remove and upgrade software packages</summary>
+  <summary xml:lang="ar">ثبّت، أزل وحدّث حزم البرامج</summary>
+  <summary xml:lang="ast">Instalar, desaniciar y anovar paquetes de software</summary>
+  <summary xml:lang="be">Усталёўвае, выдаляе і абнаўляе пакеты</summary>
+  <summary xml:lang="be@latin">Instaluj, vydalaj i aktualizuj prahramnyja pakunki</summary>
+  <summary xml:lang="bg">Инсталиране, премахване и актуализиране на софтуерни пакети</summary>
+  <summary xml:lang="bn">সফটওয়্যার প্যাকেজ ইনস্টল, অপসারণ এবং আপগ্রেড</summary>
+  <summary xml:lang="br">Staliañ, dilemel ha hizivaat pakadoù</summary>
+  <summary xml:lang="bs">Instaliraj, ukloni i nadogradi softverske pakete</summary>
+  <summary xml:lang="ca">Instal·la, elimina i actualitza paquets de programari</summary>
+  <summary xml:lang="ca@valencia">Instal·la, elimina i actualitza paquets de programari</summary>
+  <summary xml:lang="cs">Nainstalovat, odstranit a aktualizovat balíky</summary>
+  <summary xml:lang="da">Installér, fjern og opgradér softwarepakker</summary>
+  <summary xml:lang="de">Anwendungenspakete installieren, entfernen und aktualisieren</summary>
+  <summary xml:lang="el">Εγκατάσταση, απομάκρυνση και αναβάθμιση πακέτων λογισμικού</summary>
+  <summary xml:lang="en_AU">Install, remove and upgrade software packages</summary>
+  <summary xml:lang="en_GB">Install, remove and upgrade software packages</summary>
+  <summary xml:lang="eo">Instali, forigi kaj promocii programarajn pakaĵojn</summary>
+  <summary xml:lang="es">Instalar, desinstalar y actualizar los paquetes de software</summary>
+  <summary xml:lang="et">Paigalda, eemalda ja uuenda tarkvarapakette</summary>
+  <summary xml:lang="eu">Instalatu, kendu eta bertsio-berritu software-paketeak</summary>
+  <summary xml:lang="fi">Asenna, poista ja päivitä ohjelmistopaketteja</summary>
+  <summary xml:lang="fr">Installer, désinstaller et mettre à jour les paquets de logiciels</summary>
+  <summary xml:lang="gl">Instalar, retirar e anovar os paquetes de software</summary>
+  <summary xml:lang="he">התקנה, הסרה ושדרוג חבילות תכנה.</summary>
+  <summary xml:lang="hi">सॉफ्टवेयर पैकेजों की स्थापना, अद्यतन करें या उन्हें हटाएं.</summary>
+  <summary xml:lang="hr">Instaliraj, ukloni i nadogradi softverske pakete</summary>
+  <summary xml:lang="hu">Csomagok telepítése, törlése és frissítése</summary>
+  <summary xml:lang="it">Installa, rimuove e aggiorna i pacchetti software</summary>
+  <summary xml:lang="ja">ソフトウェアパッケージのインストール、削除またはアップグレード</summary>
+  <summary xml:lang="ko">소프트웨어 패키지를 설치, 지우기, 업그레이드</summary>
+  <summary xml:lang="ku">Pakêtên nivîsbariyê saz bike, jê bibe û bilindbike</summary>
+  <summary xml:lang="lt">Įdiekite, šalinkite ir atnaujinkite programų paketus</summary>
+  <summary xml:lang="mk">Инсталирајте, отстранете или надградете софтверски пакети</summary>
+  <summary xml:lang="ms">Pasang, buang dan tatar pakej perisian</summary>
+  <summary xml:lang="nb">Installer, fjern eller oppgrader programpakker</summary>
+  <summary xml:lang="nl">Installeer, verwijder en waardeer softwarepakketten op</summary>
+  <summary xml:lang="no">Installer, fjern eller oppgrader programvare pakker</summary>
+  <summary xml:lang="oc">Installar, suprimir e actualizar los paquets logicials</summary>
+  <summary xml:lang="pl">Instalacja, usuwanie i aktualizacja pakietów z oprogramowaniem</summary>
+  <summary xml:lang="pt">Instalar, remover e actualizar pacotes</summary>
+  <summary xml:lang="pt_BR">Instalar, remover e atualizar pacotes de software</summary>
+  <summary xml:lang="ro">Instalează, dezinstalează și actualizează pachete de programe</summary>
+  <summary xml:lang="ru">Установить, удалить и обновить пакеты</summary>
+  <summary xml:lang="sk">Inštalovať, odstrániť alebo aktualizovať softvérové balíky</summary>
+  <summary xml:lang="sl">Namestitev, odstranjevanje in nadgradnja programskih paketov</summary>
+  <summary xml:lang="sr">Инсталирајте, уклоните и надоградите пакете програма</summary>
+  <summary xml:lang="sr@Latn">Instaliraj, ukloni i nadogradi softverske pakete</summary>
+  <summary xml:lang="sv">Installera, ta bort och uppgradera programpaket</summary>
+  <summary xml:lang="te">సాఫ్ట్‍వేర్ ప్యాకేజీలను స్థాపించండి, తొలగించండి, ఉన్నతీకరించండి</summary>
+  <summary xml:lang="th">ติดตั้ง ถอดถอน และปรับรุ่นแพกเกจซอฟต์แวร์</summary>
+  <summary xml:lang="tr">Yazılım paketlerini kur, kaldır veya yükselt</summary>
+  <summary xml:lang="uk">Встановлення, вилучення та оновлення пакунків програмного забезпечення</summary>
+  <summary xml:lang="xh">Faka, susa uze uphucule imiqulu yesoftware</summary>
+  <summary xml:lang="zh_CN">安装，删除和升级软件包</summary>
+  <summary xml:lang="zh_HK">安裝、移除及升級套件</summary>
+  <summary xml:lang="zh_TW">安裝、移除及升級套件</summary>
+  <description>
+    <p>PolySynaptic is a graphical package management tool based on GTK and APT. PolySynaptic enables you to install, upgrade and remove software packages in a user-friendly way.</p>
+    <p>Besides these basic functions the following features are provided:</p>
+    <ul>
+      <li>Search and filter the list of available packages</li>
+      <li>Perform smart system upgrades</li>
+      <li>Fix broken package dependencies</li>
+      <li>Edit the list of used repositories</li>
+      <li>Download the latest changelog of a package</li>
+      <li>Configure packages through the debconf system</li>
+      <li>Browse all available documentation related to a package</li>
+    </ul>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/pitcany/polysynaptic/refs/heads/master/polysynaptic.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/pitcany/polysynaptic</url>
+  <url type="bugtracker">https://github.com/pitcany/polysynaptic/issues</url>
+  <content_rating type="oars-1.1"/>
+  <translation type="gettext">polysynaptic</translation>
+</component>

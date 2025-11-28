@@ -43,6 +43,8 @@ using namespace std;
 #include "gtkpkglist.h"
 #include "rgpkgdetails.h"
 #include "rglogview.h"
+#include "backendmanager.h"
+#include "rgunifiedview.h"
 
 #define TOOLBAR_HIDE -1
 
@@ -53,6 +55,7 @@ class RGFilterWindow;
 class RGFindWindow;
 class RGSetOptWindow;
 class RGAboutPanel;
+class RGBackendSettingsWindow;
 
 class RGUserDialog;
 class RGCacheProgress;
@@ -133,6 +136,14 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    RGUserDialog *_userDialog;
    RGFetchProgress *_fetchProgress;
    RGWindow *_installProgress;
+   RGBackendSettingsWindow *_backendSettingsWin;
+
+   // PolySynaptic multi-backend support
+   PolySynaptic::BackendManager *_backendManager;
+   RGBackendFilterBar *_backendFilterBar;
+   RGUnifiedPkgList *_unifiedPkgList;
+   vector<PolySynaptic::PackageInfo> _unifiedPackages;
+   bool _unifiedViewMode;  // true = unified view, false = legacy APT-only
 
    // fast search stuff
    int _fastSearchEventID;
@@ -291,6 +302,11 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    static void cbShowConfigWindow(GtkWidget *self, void *data);
    static void cbShowSetOptWindow(GtkWidget *self, void *data);
    static void cbShowSourcesWindow(GtkWidget *self, void *data);
+   static void cbShowBackendSettingsWindow(GtkWidget *self, void *data);
+   static void cbToggleUnifiedView(GtkWidget *self, void *data);
+   void onBackendFilterChanged(const PolySynaptic::BackendFilter& filter);
+   void doUnifiedSearch(const string& query);
+   void updateUnifiedTreeView();
    static void cbMenuToolbarClicked(GtkWidget *self, void *data);
 
    // help menu

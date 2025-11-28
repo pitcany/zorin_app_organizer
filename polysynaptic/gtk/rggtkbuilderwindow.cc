@@ -73,7 +73,7 @@ RGGtkBuilderWindow::RGGtkBuilderWindow(RGWindow *parent, string name, string mai
 
    gtk_window_set_position(GTK_WINDOW(_win),
 			   GTK_WIN_POS_CENTER_ON_PARENT);
-   GdkPixbuf *icon = get_gdk_pixbuf( "synaptic" );
+   GdkPixbuf *icon = get_gdk_pixbuf( "polysynaptic" );
    gtk_window_set_icon(GTK_WINDOW(_win), icon);
 
    g_free(filename);

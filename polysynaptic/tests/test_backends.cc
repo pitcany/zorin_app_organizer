@@ -26,6 +26,23 @@
 using namespace std;
 using namespace PolySynaptic;
 
+// Stream operators for enum types (needed for ASSERT_EQ macro)
+ostream& operator<<(ostream& os, BackendType type) {
+    return os << backendTypeToString(type);
+}
+
+ostream& operator<<(ostream& os, InstallStatus status) {
+    return os << installStatusToString(status);
+}
+
+ostream& operator<<(ostream& os, FlatpakBackend::Scope scope) {
+    switch (scope) {
+        case FlatpakBackend::Scope::USER: return os << "USER";
+        case FlatpakBackend::Scope::SYSTEM: return os << "SYSTEM";
+        default: return os << "UNKNOWN";
+    }
+}
+
 // ============================================================================
 // Test Utilities
 // ============================================================================

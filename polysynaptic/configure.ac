@@ -20,12 +20,12 @@ dnl generated with: cd po;for i in $(ls *.po); do echo -n "${i%%.po} "; done
 dnl i18n
 ALL_LINGUAS="af am ar ast az be@latin be bg bn bo br bs ca ca@valencia ckb crh csb cs cy da de_DE de dv el en_AU en_CA en_GB eo es et eu fa fil fi fo fr fur fy ga gl gu gv he hi hr ht hu hy ia id is it ja ka km kn ko ku ky la lo lt lv mk ml mr ms my nb nds ne nl_NL nl nn no oc pa pl ps pt_BR pt pt_PT qu ro ru sc si sk sl sq sr@Latn sr sv ta_LK ta te tet th tl tr tt ug uk ur uz vi xh zh_CN zh_HK zh_TW"
 AM_GLIB_GNU_GETTEXT
-GETTEXT_PACKAGE=synaptic
+GETTEXT_PACKAGE=polysynaptic
 AC_SUBST(GETTEXT_PACKAGE)
 AC_DEFINE_UNQUOTED(GETTEXT_PACKAGE, "$GETTEXT_PACKAGE",[description])
 AC_PROG_INTLTOOL([0.23])
-synapticlocaledir='${prefix}/${DATADIRNAME}/locale'
-AC_SUBST(synapticlocaledir)
+polysynapticlocaledir='${prefix}/${DATADIRNAME}/locale'
+AC_SUBST(polysynapticlocaledir)
      
 dnl we build for gtk3 by default now
 pkg_modules="gtk+-3.0 >= 3.4.0, pango >= 1.0.0, glib-2.0"

@@ -18,8 +18,8 @@ AM_CPPFLAGS = -I${top_srcdir}/common \
 	$(LIBEPT_CFLAGS) \
 	-std=c++17
 
-# Build both synaptic (legacy) and polysynaptic binaries
-sbin_PROGRAMS = polysynaptic synaptic
+# Build polysynaptic only (avoids conflict with apt's synaptic package)
+sbin_PROGRAMS = polysynaptic
 
 #polysynaptic_LDFLAGS= --export-dynamic
 
@@ -32,7 +32,7 @@ polysynaptic_LDADD = \
 	-lutil \
 	-lpthread
 
-synaptic_LDADD = $(polysynaptic_LDADD)
+# Removed synaptic_LDADD - only building polysynaptic now
 
 # Original Synaptic UI sources
 SYNAPTIC_UI_SOURCES = \
@@ -107,8 +107,7 @@ POLYSYNAPTIC_UI_SOURCES = \
 # PolySynaptic includes all sources
 polysynaptic_SOURCES = $(SYNAPTIC_UI_SOURCES) $(POLYSYNAPTIC_UI_SOURCES)
 
-# Legacy synaptic only uses original sources
-synaptic_SOURCES = $(SYNAPTIC_UI_SOURCES)
+# Removed synaptic_SOURCES - only building polysynaptic now
 
 CLEANFILES= $(wildcard *_wrap.*) $(wildcard *~) 
 
