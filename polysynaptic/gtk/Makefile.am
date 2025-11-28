@@ -16,7 +16,7 @@ AM_CPPFLAGS = -I${top_srcdir}/common \
 	@LP_CFLAGS@ \
 	@GTK_DISABLE_DEPRECATED@ \
 	$(LIBEPT_CFLAGS) \
-	-std=c++14
+	-std=c++17
 
 # Build both synaptic (legacy) and polysynaptic binaries
 sbin_PROGRAMS = polysynaptic synaptic
@@ -102,11 +102,7 @@ POLYSYNAPTIC_UI_SOURCES = \
 	rgunifiedview.h \
 	rgunifiedview.cc \
 	rgbackendsettings.h \
-	rgbackendsettings.cc \
-	rgsourcespane.h \
-	rgsourcespane.cc \
-	rgdebugpanel.h \
-	rgdebugpanel.cc
+	rgbackendsettings.cc
 
 # PolySynaptic includes all sources
 polysynaptic_SOURCES = $(SYNAPTIC_UI_SOURCES) $(POLYSYNAPTIC_UI_SOURCES)

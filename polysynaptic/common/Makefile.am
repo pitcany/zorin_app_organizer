@@ -9,7 +9,7 @@ AM_CPPFLAGS = -I/usr/include/apt-pkg @RPM_HDRS@ @DEB_HDRS@ \
 	$(LIBEPT_CFLAGS) \
 	-DSYNAPTICLOCALEDIR=\""$(synapticlocaledir)"\" \
 	-DSYNAPTICSTATEDIR=\""$(localstatedir)"\" \
-	-std=c++14
+	-std=c++17
 
 # Original Synaptic sources
 libsynaptic_a_SOURCES =\
@@ -62,15 +62,6 @@ libsynaptic_a_SOURCES =\
 	flatpakbackend.cc \
 	backendmanager.h \
 	backendmanager.cc \
-	packagesourceprovider.h \
-	structuredlog.h \
-	aptprovider.h \
-	aptprovider.cc \
-	snapprovider.h \
-	snapprovider.cc \
-	flatpakprovider.h \
-	flatpakprovider.cc \
-	packageranking.h \
-	packageranking.cc
+	structuredlog.h
 
 
