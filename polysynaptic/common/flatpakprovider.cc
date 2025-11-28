@@ -111,9 +111,8 @@ std::vector<UnifiedPackage> FlatpakProvider::search(
         .emit();
 
     auto startTime = std::chrono::steady_clock::now();
-    const bool unlimitedResults = (options.maxResults <= 0);
-    const std::size_t maxResults =
-        unlimitedResults ? 0 : static_cast<std::size_t>(options.maxResults);
+    const std::size_t maxResultsLimit =
+        static_cast<std::size_t>(options.maxResults);
 
     // If installed only, filter installed list
     if (options.installedOnly) {
@@ -140,7 +139,8 @@ std::vector<UnifiedPackage> FlatpakProvider::search(
                 filtered.push_back(pkg);
             }
 
-            if (!unlimitedResults && filtered.size() >= maxResults) break;
+            if (options.maxResults != 0 &&
+                filtered.size() >= maxResultsLimit) break;
         }
 
         return filtered;
@@ -165,8 +165,9 @@ std::vector<UnifiedPackage> FlatpakProvider::search(
     auto packages = parseFlatpakSearch(result.stdout);
 
     // Limit results
-    if (!unlimitedResults && packages.size() > maxResults) {
-        packages.resize(maxResults);
+    if (options.maxResults != 0 &&
+        packages.size() > maxResultsLimit) {
+        packages.resize(maxResultsLimit);
     }
 
     // Mark installed packages
