@@ -1,36 +1,44 @@
+# PolySynaptic - C++/GTK Multi-backend Package Manager
+
 # Worktrees directory
 .worktrees/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
+# Build artifacts
+*.o
+*.a
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+*.lo
+*.la
+.libs/
+.deps/
 
-# Virtual Environment
-venv/
-ENV/
-env/
-.venv
+# Autotools generated files
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+config.guess
+config.h
+config.h.in
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+missing
+stamp-h1
+ar-lib
+ylwrap
+m4/libtool.m4
+m4/lt*.m4
+
+# Build directories
+build/
+_build/
 
 # IDE
 .vscode/
@@ -38,20 +46,41 @@ env/
 *.swp
 *.swo
 *~
+.project
+.cproject
+.settings/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-logs/
-*.log
+# Editor backups
+\#*\#
+.\#*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Application specific
-upm.db
-config.json
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Debian packaging
+*.deb
+*.changes
+*.buildinfo
+
+# Docker
+.docker/
+
+# Test artifacts
+test-driver
+test-suite.log
+*.trs
+
+# Compiled binaries
+polysynaptic/gtk/polysynaptic
+polysynaptic/gtk/synaptic
+polysynaptic/tests/test_*
+!polysynaptic/tests/test_*.cc
