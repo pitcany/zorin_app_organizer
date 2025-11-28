@@ -51,6 +51,9 @@
 #include "stdio.h"
 #include "rgutils.h"
 #include "rgpackagestatus.h"
+#include "backendmanager.h"
+
+using namespace PolySynaptic;
 
 
 
@@ -464,7 +467,11 @@ int main(int argc, char **argv)
    RGPackageStatus::pkgStatus.init();
 
    RPackageLister *packageLister = new RPackageLister();
-   RGMainWindow *mainWindow = new RGMainWindow(packageLister, "main");
+
+   // Create BackendManager for multi-backend support (APT, Snap, Flatpak)
+   BackendManager *backendManager = new BackendManager(packageLister);
+
+   RGMainWindow *mainWindow = new RGMainWindow(packageLister, backendManager, "main");
 
    // install a sigusr1 signal handler and put window into 
    // foreground when called. use the io_watch trick because gtk is not

@@ -43,6 +43,8 @@ using namespace std;
 #include "gtkpkglist.h"
 #include "rgpkgdetails.h"
 #include "rglogview.h"
+#include "backendmanager.h"
+#include "rgunifiedview.h"
 
 #define TOOLBAR_HIDE -1
 
@@ -84,6 +86,14 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
 
    // the central class that has all the package information
    RPackageLister *_lister;
+
+   // Multi-backend manager for APT, Snap, Flatpak support
+   PolySynaptic::BackendManager *_backendManager;
+   RGBackendFilterBar *_backendFilterBar;
+   RGBackendStatusBar *_backendStatusBar;
+
+   // Cached multi-backend search results
+   vector<PolySynaptic::PackageInfo> _unifiedSearchResults;
 
    // interface stuff
    GtkToolbarStyle _toolbarStyle; // hide, small, normal toolbar
@@ -194,8 +204,18 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    };
 
  public:
-   RGMainWindow(RPackageLister *packLister, string name);
+   // Full constructor with multi-backend support
+   RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendManager *backendMgr, string name);
+   // Legacy constructor for backward compatibility (APT only)
+   RGMainWindow(RPackageLister *packLister, string name)
+      : RGMainWindow(packLister, nullptr, name) {}
    virtual ~RGMainWindow() {};
+
+   // Get the backend manager
+   PolySynaptic::BackendManager* getBackendManager() { return _backendManager; }
+
+   // Perform multi-backend search
+   void searchAllBackends(const string& query);
 
    void refreshTable(RPackage *selectedPkg = NULL,bool setAdjustments=true);
 

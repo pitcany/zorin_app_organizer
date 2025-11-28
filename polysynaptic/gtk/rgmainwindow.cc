@@ -792,10 +792,11 @@ bool RGMainWindow::checkForFailedInst(vector<RPackage *> instPkgs)
    return failed;
 }
 
-RGMainWindow::RGMainWindow(RPackageLister *packLister, string name)
-   : RGGtkBuilderWindow(NULL, name), _lister(packLister), _pkgList(0), 
-     _treeView(0), _tasksWin(0), _iconLegendPanel(0), _pkgDetails(0),
-     _logView(0), _installProgress(0), _fetchProgress(0), 
+RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendManager *backendMgr, string name)
+   : RGGtkBuilderWindow(NULL, name), _lister(packLister), _backendManager(backendMgr),
+     _backendFilterBar(nullptr), _backendStatusBar(nullptr),
+     _pkgList(0), _treeView(0), _tasksWin(0), _iconLegendPanel(0), _pkgDetails(0),
+     _logView(0), _installProgress(0), _fetchProgress(0),
      _fastSearchEventID(-1)
 {
    assert(_win);
@@ -812,6 +813,45 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, string name)
    // create all the interface stuff
    buildInterface();
    _userDialog = new RGUserDialog(this);
+
+   // Initialize multi-backend UI components
+   if (_backendManager) {
+      // Create backend filter bar (checkboxes for APT/Snap/Flatpak)
+      _backendFilterBar = new RGBackendFilterBar(_backendManager);
+
+      // Create backend status bar (shows availability)
+      _backendStatusBar = new RGBackendStatusBar(_backendManager);
+
+      // Add filter bar to the UI - insert above the search entry
+      GtkWidget *searchBox = GTK_WIDGET(gtk_builder_get_object(_builder, "hbox_fast_search"));
+      if (searchBox) {
+         GtkWidget *parent = gtk_widget_get_parent(searchBox);
+         if (parent && GTK_IS_BOX(parent)) {
+            // Insert filter bar before the search box
+            gtk_box_pack_start(GTK_BOX(parent), _backendFilterBar->getWidget(), FALSE, FALSE, 0);
+            gtk_box_reorder_child(GTK_BOX(parent), _backendFilterBar->getWidget(), 0);
+         }
+      }
+
+      // Add status bar to the main status area
+      GtkWidget *statusBar = GTK_WIDGET(gtk_builder_get_object(_builder, "statusbar"));
+      if (statusBar) {
+         GtkWidget *parent = gtk_widget_get_parent(statusBar);
+         if (parent && GTK_IS_BOX(parent)) {
+            gtk_box_pack_end(GTK_BOX(parent), _backendStatusBar->getWidget(), FALSE, FALSE, 5);
+         }
+      }
+
+      // Log backend availability
+      auto statuses = _backendManager->getBackendStatuses();
+      for (const auto& status : statuses) {
+         if (status.available) {
+            std::cout << "Backend available: " << status.name << " " << status.version << std::endl;
+         } else {
+            std::cout << "Backend unavailable: " << status.name << " - " << status.unavailableReason << std::endl;
+         }
+      }
+   }
 
    packLister->setUserDialog(_userDialog);
 
@@ -2822,6 +2862,7 @@ gboolean RGMainWindow::xapianDoSearch(void *data)
       gtk_tree_view_set_model(GTK_TREE_VIEW(me->_treeView), NULL);
       me->_lister->reapplyFilter();
       me->refreshTable();
+      me->_unifiedSearchResults.clear();
       me->setBusyCursor(false);
    } else if(strlen(str) > 1) {
       // only search when there is more than one char entered, single
@@ -2834,10 +2875,57 @@ gboolean RGMainWindow::xapianDoSearch(void *data)
       // is performed
       gtk_style_context_add_provider(styleContext, GTK_STYLE_PROVIDER(_fastSearchCssProvider),
                                      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+      // Also search Snap and Flatpak backends
+      me->searchAllBackends(str);
    }
    me->setBusyCursor(false);
 
    return FALSE;
+}
+
+// Search all backends (Snap, Flatpak) in addition to APT
+void RGMainWindow::searchAllBackends(const string& query)
+{
+   if (!_backendManager) return;
+
+   // Get backend filter from the UI
+   PolySynaptic::BackendFilter filter;
+   if (_backendFilterBar) {
+      filter = _backendFilterBar->getFilter();
+   }
+
+   // Only search non-APT backends (APT is handled by the existing xapian search)
+   filter.includeApt = false;
+
+   // Create search options
+   PolySynaptic::SearchOptions options;
+   options.query = query;
+   options.searchNames = true;
+   options.searchDescriptions = true;
+   options.maxResults = 100;  // Limit results per backend
+
+   // Search in background thread would be better, but for now do synchronously
+   _unifiedSearchResults = _backendManager->searchPackages(options, filter, nullptr);
+
+   // Log results
+   int snapCount = 0, flatpakCount = 0;
+   for (const auto& pkg : _unifiedSearchResults) {
+      if (pkg.backend == PolySynaptic::BackendType::SNAP) snapCount++;
+      else if (pkg.backend == PolySynaptic::BackendType::FLATPAK) flatpakCount++;
+   }
+
+   if (snapCount > 0 || flatpakCount > 0) {
+      std::cout << "Multi-backend search for '" << query << "': "
+                << snapCount << " Snap, " << flatpakCount << " Flatpak results" << std::endl;
+
+      // Update status bar with result counts
+      ostringstream status;
+      status << "Found: " << _lister->viewPackagesSize() << " APT";
+      if (snapCount > 0) status << ", " << snapCount << " Snap";
+      if (flatpakCount > 0) status << ", " << flatpakCount << " Flatpak";
+      setStatusText(const_cast<char*>(status.str().c_str()));
+   }
 }
 
 void RGMainWindow::cbSearchEntryChanged(GtkWidget *edit, void *data)
