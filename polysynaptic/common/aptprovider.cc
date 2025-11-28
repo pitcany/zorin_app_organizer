@@ -114,9 +114,12 @@ std::vector<UnifiedPackage> APTProvider::search(
     std::string lowerQuery = query;
     std::transform(lowerQuery.begin(), lowerQuery.end(), lowerQuery.begin(), ::tolower);
 
+    const bool limitResults = options.maxResults > 0;
+    const std::size_t maxResultsLimit =
+        limitResults ? static_cast<std::size_t>(options.maxResults) : 0;
+
     for (unsigned int i = 0; i < _lister->count() &&
-         (options.maxResults == 0 ||
-          results.size() < static_cast<std::size_t>(options.maxResults)); i++) {
+         (!limitResults || results.size() < maxResultsLimit); i++) {
         RPackage* pkg = _lister->getElement(i);
         if (!pkg) continue;
 
