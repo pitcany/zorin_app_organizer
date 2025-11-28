@@ -382,6 +382,12 @@ PackageInfo BackendManager::getPackageDetails(const string& packageId, BackendTy
 // Transaction Management
 // ============================================================================
 
+Transaction BackendManager::getCurrentTransaction() const
+{
+    lock_guard<mutex> lock(_txMutex);
+    return _currentTransaction;
+}
+
 void BackendManager::queueInstall(const PackageInfo& package)
 {
     lock_guard<mutex> lock(_txMutex);

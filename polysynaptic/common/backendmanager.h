@@ -264,9 +264,9 @@ public:
     // ========================================================================
 
     /**
-     * Get the current pending transaction
+     * Get a snapshot of the current pending transaction
      */
-    Transaction& getCurrentTransaction() { return _currentTransaction; }
+    Transaction getCurrentTransaction() const;
 
     /**
      * Add a package to the install queue
