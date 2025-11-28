@@ -96,10 +96,7 @@ USER $USERNAME
 # Environment variables for development
 ENV PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
 ENV CFLAGS="-g -O0 -Wall -Wextra"
-ENV CXXFLAGS="-g -O0 -Wall -Wextra -std=c++14"
+ENV CXXFLAGS="-g -O0 -Wall -Wextra -std=c++17"
 
-# Entry point
-COPY --chown=$USERNAME:$USERNAME docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh 2>/dev/null || true
-
+# Default command - start bash shell for interactive development
 CMD ["/bin/bash"]
