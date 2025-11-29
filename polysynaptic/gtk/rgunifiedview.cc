@@ -11,6 +11,7 @@
 #include "rgunifiedview.h"
 #include "rgutils.h"
 
+#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -133,6 +134,8 @@ static GType rg_unified_pkg_list_get_column_type(GtkTreeModel* model, gint colum
 }
 
 // TreeModel interface: Get iterator from path
+// NOTE: The path index is the VISIBLE row number, not the raw vector index.
+// We must translate from visible row number to raw vector index.
 static gboolean rg_unified_pkg_list_get_iter(GtkTreeModel* model,
                                               GtkTreeIter* iter,
                                               GtkTreePath* path)
@@ -146,28 +149,48 @@ static gboolean rg_unified_pkg_list_get_iter(GtkTreeModel* model,
 
     if (depth != 1) return FALSE;
 
-    gint idx = indices[0];
-    if (idx < 0 || idx >= (gint)list->packages->size()) return FALSE;
+    gint visible_row = indices[0];
+    if (visible_row < 0) return FALSE;
 
-    // Filter check
-    const PackageInfo& pkg = (*list->packages)[idx];
-    if (!list->filter.includes(pkg.backend)) return FALSE;
+    // Find the nth visible package (same logic as iter_nth_child)
+    gint count = 0;
+    for (gint i = 0; i < (gint)list->packages->size(); i++) {
+        const PackageInfo& pkg = (*list->packages)[i];
+        if (list->filter.includes(pkg.backend)) {
+            if (count == visible_row) {
+                iter->stamp = 1;
+                iter->user_data = GINT_TO_POINTER(i);
+                iter->user_data2 = nullptr;
+                iter->user_data3 = nullptr;
+                return TRUE;
+            }
+            count++;
+        }
+    }
 
-    iter->stamp = 1;
-    iter->user_data = GINT_TO_POINTER(idx);
-    iter->user_data2 = nullptr;
-    iter->user_data3 = nullptr;
-
-    return TRUE;
+    return FALSE;
 }
 
 // TreeModel interface: Get path from iterator
+// NOTE: The iterator stores the raw vector index in user_data.
+// The path must be the VISIBLE row number, not the raw index.
 static GtkTreePath* rg_unified_pkg_list_get_path(GtkTreeModel* model,
                                                   GtkTreeIter* iter)
 {
-    gint idx = GPOINTER_TO_INT(iter->user_data);
+    RGUnifiedPkgList* list = RG_UNIFIED_PKG_LIST(model);
+    gint raw_idx = GPOINTER_TO_INT(iter->user_data);
+
+    // Count how many visible packages come before this one
+    gint visible_row = 0;
+    for (gint i = 0; i < raw_idx && i < (gint)list->packages->size(); i++) {
+        const PackageInfo& pkg = (*list->packages)[i];
+        if (list->filter.includes(pkg.backend)) {
+            visible_row++;
+        }
+    }
+
     GtkTreePath* path = gtk_tree_path_new();
-    gtk_tree_path_append_index(path, idx);
+    gtk_tree_path_append_index(path, visible_row);
     return path;
 }
 
@@ -179,10 +202,16 @@ static void rg_unified_pkg_list_get_value(GtkTreeModel* model,
 {
     RGUnifiedPkgList* list = RG_UNIFIED_PKG_LIST(model);
 
-    if (!list->packages) return;
+    if (!list->packages) {
+        std::cerr << "DEBUG get_value: packages is NULL!" << std::endl;
+        return;
+    }
 
     gint idx = GPOINTER_TO_INT(iter->user_data);
-    if (idx < 0 || idx >= (gint)list->packages->size()) return;
+    if (idx < 0 || idx >= (gint)list->packages->size()) {
+        std::cerr << "DEBUG get_value: idx=" << idx << " out of range (size=" << list->packages->size() << ")" << std::endl;
+        return;
+    }
 
     const PackageInfo& pkg = (*list->packages)[idx];
 

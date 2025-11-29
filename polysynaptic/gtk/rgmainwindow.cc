@@ -111,8 +111,13 @@ GtkCssProvider *RGMainWindow::_fastSearchCssProvider = NULL;
 void RGMainWindow::changeView(int view, string subView)
 {
    if(_config->FindB("Debug::Synaptic::View",false))
-      ioprintf(clog, "RGMainWindow::changeView(): view '%i' subView '%s'\n", 
+      ioprintf(clog, "RGMainWindow::changeView(): view '%i' subView '%s'\n",
 	       view, subView.size() > 0 ? subView.c_str() : "(empty)");
+
+   // PolySynaptic: Views (All, Installed, New, etc.) are APT-specific
+   // In unified mode, the unified list shows all backends together
+   if (_unifiedViewMode)
+      return;
 
    if(view >= N_PACKAGE_VIEWS) {
       //cerr << "changeView called with invalid view NR: " << view << endl;
@@ -303,9 +308,16 @@ void RGMainWindow::forgetNewPackages()
 
 void RGMainWindow::refreshTable(RPackage *selectedPkg, bool setAdjustment)
 {
+   // Skip legacy APT refresh logic when in unified view mode
+   if (_unifiedViewMode) {
+      gtk_widget_queue_draw(_treeView);
+      setStatusText();
+      return;
+   }
+
    if(_config->FindB("Debug::Synaptic::View",false))
-      ioprintf(clog, "RGMainWindow::refreshTable(): pkg: '%s' adjust '%i'\n", 
-	       selectedPkg != NULL ? selectedPkg->name() : "(no pkg)", 
+      ioprintf(clog, "RGMainWindow::refreshTable(): pkg: '%s' adjust '%i'\n",
+	       selectedPkg != NULL ? selectedPkg->name() : "(no pkg)",
 	       setAdjustment);
 
    const gchar *str = gtk_entry_get_text(GTK_ENTRY(_entry_fast_search));
@@ -826,24 +838,11 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendMana
    buildInterface();
    _userDialog = new RGUserDialog(this);
 
-   // Initialize multi-backend UI components
+   // Note: _backendFilterBar is created and configured inside buildInterface()
+   // Initialize additional multi-backend UI components here
    if (_backendManager) {
-      // Create backend filter bar (checkboxes for APT/Snap/Flatpak)
-      _backendFilterBar = new RGBackendFilterBar(_backendManager);
-
       // Create backend status bar (shows availability)
       _backendStatusBar = new RGBackendStatusBar(_backendManager);
-
-      // Add filter bar to the UI - insert above the search entry
-      GtkWidget *searchBox = GTK_WIDGET(gtk_builder_get_object(_builder, "hbox_fast_search"));
-      if (searchBox) {
-         GtkWidget *parent = gtk_widget_get_parent(searchBox);
-         if (parent && GTK_IS_BOX(parent)) {
-            // Insert filter bar before the search box
-            gtk_box_pack_start(GTK_BOX(parent), _backendFilterBar->getWidget(), FALSE, FALSE, 0);
-            gtk_box_reorder_child(GTK_BOX(parent), _backendFilterBar->getWidget(), 0);
-         }
-      }
 
       // Add status bar to the main status area
       GtkWidget *statusBar = GTK_WIDGET(gtk_builder_get_object(_builder, "statusbar"));
@@ -1029,6 +1028,9 @@ void RGMainWindow::xapianIndexUpdateFinished(GPid pid, gint status, void* data)
 
 void RGMainWindow::buildTreeView()
 {
+   std::cerr << "DEBUG buildTreeView: _unifiedViewMode=" << _unifiedViewMode
+             << " _backendManager=" << _backendManager
+             << " _unifiedPkgList=" << _unifiedPkgList << std::endl;
 
    // remove old tree columns
    if (_treeView) {
@@ -1052,9 +1054,11 @@ void RGMainWindow::buildTreeView()
 
    // Setup columns based on view mode
    if (_unifiedViewMode && _backendManager) {
+      std::cerr << "DEBUG buildTreeView: Using UNIFIED columns" << std::endl;
       setupUnifiedTreeView(_treeView);
       // Don't set model yet - will be set when packages are loaded
    } else {
+      std::cerr << "DEBUG buildTreeView: Using APT columns" << std::endl;
       setupTreeView(_treeView);
       _pkgList = GTK_TREE_MODEL(gtk_pkg_list_new(_lister));
       gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), _pkgList);
@@ -1441,13 +1445,24 @@ void RGMainWindow::buildInterface()
    gtk_paned_set_position(GTK_PANED(hpaned),
                           _config->FindI("Synaptic::hpanedPos", 200));
 
+   // PolySynaptic: Create unified package list model BEFORE buildTreeView
+   // This must happen before buildTreeView() and loadUnifiedInstalledPackages()
+   std::cerr << "DEBUG: About to create _unifiedPkgList, _backendManager=" << _backendManager << std::endl;
+   if (_backendManager) {
+      _unifiedPkgList = rg_unified_pkg_list_new(_backendManager);
+      std::cerr << "DEBUG: Created _unifiedPkgList=" << _unifiedPkgList << std::endl;
+   }
 
    // build the treeview
+   std::cerr << "DEBUG: About to call buildTreeView(), _unifiedViewMode=" << _unifiedViewMode << std::endl;
    buildTreeView();
+   std::cerr << "DEBUG: buildTreeView() completed" << std::endl;
 
    // If in unified mode, load initial package data
    if (_unifiedViewMode && _backendManager) {
+      std::cerr << "DEBUG: About to call loadUnifiedInstalledPackages()" << std::endl;
       loadUnifiedInstalledPackages();
+      std::cerr << "DEBUG: loadUnifiedInstalledPackages() completed, _unifiedPackages.size()=" << _unifiedPackages.size() << std::endl;
    }
 
    g_signal_connect(G_OBJECT(_treeView), "button-press-event",
@@ -1723,8 +1738,7 @@ void RGMainWindow::buildInterface()
       gtk_widget_show(_backendFilterBar->getWidget());
    }
 
-   // Create unified package list model
-   _unifiedPkgList = rg_unified_pkg_list_new(_backendManager);
+   // Note: _unifiedPkgList is created earlier, before buildTreeView()
 
    // stuff for the non-root mode
    if(getuid() != 0) {
@@ -1971,7 +1985,13 @@ void RGMainWindow::setTreeLocked(bool flag)
       updatePackageInfo(NULL);
       gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), NULL);
    } else {
-      gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), _pkgList);
+      // PolySynaptic: Restore the correct model based on view mode
+      if (_unifiedViewMode && _unifiedPkgList) {
+         gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView),
+                                 GTK_TREE_MODEL(_unifiedPkgList));
+      } else {
+         gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), _pkgList);
+      }
    }
 }
 
@@ -2946,6 +2966,10 @@ void RGMainWindow::cbChangedSubView(GtkTreeSelection *selection,
 {
    RGMainWindow *me = (RGMainWindow *) data;
    if(me->_blockActions)
+      return;
+
+   // PolySynaptic: Subviews are APT-specific, skip in unified mode
+   if (me->_unifiedViewMode)
       return;
 
    me->setBusyCursor(true);
