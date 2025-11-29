@@ -174,6 +174,10 @@ private:
         std::string stderr;
     };
 
+    // Safe argument-based execution (no shell - prevents command injection)
+    CommandResult executeCommandArgs(const std::vector<std::string>& args,
+                                      int timeoutMs = 30000);
+    // Legacy shell-based execution (DEPRECATED - wraps executeCommandArgs)
     CommandResult executeCommand(const std::string& command,
                                   int timeoutMs = 30000);
 

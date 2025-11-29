@@ -96,6 +96,13 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    // Cached multi-backend search results
    vector<PolySynaptic::PackageInfo> _unifiedSearchResults;
 
+   // Signal handler IDs for cleanup
+   vector<gulong> _signalHandlerIds;
+   vector<pair<GtkWidget*, gulong>> _widgetSignalHandlers;
+
+   // Xapian index update tracking (to cancel on destruction)
+   guint _xapianChildWatchId;
+
    // interface stuff
    GtkToolbarStyle _toolbarStyle; // hide, small, normal toolbar
 
@@ -146,9 +153,7 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    RGWindow *_installProgress;
    RGBackendSettingsWindow *_backendSettingsWin;
 
-   // PolySynaptic multi-backend support
-   PolySynaptic::BackendManager *_backendManager;
-   RGBackendFilterBar *_backendFilterBar;
+   // PolySynaptic multi-backend support (unified view mode)
    RGUnifiedPkgList *_unifiedPkgList;
    vector<PolySynaptic::PackageInfo> _unifiedPackages;
    bool _unifiedViewMode;  // true = unified view, false = legacy APT-only
@@ -218,7 +223,7 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    // Legacy constructor for backward compatibility (APT only)
    RGMainWindow(RPackageLister *packLister, string name)
       : RGMainWindow(packLister, nullptr, name) {}
-   virtual ~RGMainWindow() {};
+   virtual ~RGMainWindow();
 
    // Get the backend manager
    PolySynaptic::BackendManager* getBackendManager() { return _backendManager; }
@@ -324,6 +329,7 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    static void cbToggleUnifiedView(GtkWidget *self, void *data);
    void onBackendFilterChanged(const PolySynaptic::BackendFilter& filter);
    void doUnifiedSearch(const string& query);
+   void loadUnifiedInstalledPackages();
    void updateUnifiedTreeView();
    static void cbMenuToolbarClicked(GtkWidget *self, void *data);
 

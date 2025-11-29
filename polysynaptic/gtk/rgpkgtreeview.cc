@@ -7,6 +7,7 @@
 
 #include "rgpkgtreeview.h"
 #include "rgutils.h"
+#include "rgunifiedview.h"  // For unified column enum
 
 #include "i18n.h"
 
@@ -285,4 +286,100 @@ void setupTreeView(GtkWidget *treeview)
    // at us, see LP: #38397 for more information
    gtk_tree_view_set_model(GTK_TREE_VIEW(treeview), NULL);
    gtk_tree_view_set_search_column(GTK_TREE_VIEW(treeview), NAME_COLUMN);
+}
+
+void setupUnifiedTreeView(GtkWidget *treeview)
+{
+   GtkCellRenderer *renderer;
+   GtkTreeViewColumn *column, *name_column = NULL;
+   GtkTreeSelection *selection;
+
+   // Remove existing columns first
+   GList *columns = gtk_tree_view_get_columns(GTK_TREE_VIEW(treeview));
+   for (GList *li = g_list_first(columns); li != NULL; li = g_list_next(li)) {
+      gtk_tree_view_remove_column(GTK_TREE_VIEW(treeview),
+                                  GTK_TREE_VIEW_COLUMN(li->data));
+   }
+   g_list_free(columns);
+
+   gtk_tree_view_set_model(GTK_TREE_VIEW(treeview), NULL);
+
+   // Configure selection mode
+   selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(treeview));
+   gtk_tree_selection_set_mode(selection, GTK_SELECTION_MULTIPLE);
+
+   // Column 1: Package Name (UPKG_COL_PACKAGE_NAME = 1)
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_renderer_text_set_fixed_height_from_font(GTK_CELL_RENDERER_TEXT(renderer), 1);
+   name_column = column = gtk_tree_view_column_new_with_attributes(
+       _("Package"), renderer,
+       "text", UPKG_COL_PACKAGE_NAME,
+       NULL);
+   gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+   gtk_tree_view_column_set_fixed_width(column, 200);
+   gtk_tree_view_column_set_resizable(column, TRUE);
+   gtk_tree_view_column_set_sort_column_id(column, UPKG_COL_PACKAGE_NAME);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+   // Column 2: Backend Badge (UPKG_COL_BACKEND_BADGE = 2)
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_renderer_text_set_fixed_height_from_font(GTK_CELL_RENDERER_TEXT(renderer), 1);
+   column = gtk_tree_view_column_new_with_attributes(
+       _("Source"), renderer,
+       "text", UPKG_COL_BACKEND_BADGE,
+       NULL);
+   gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+   gtk_tree_view_column_set_fixed_width(column, 60);
+   gtk_tree_view_column_set_resizable(column, TRUE);
+   gtk_tree_view_column_set_sort_column_id(column, UPKG_COL_BACKEND_BADGE);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+   // Column 3: Installed Version (UPKG_COL_INSTALLED_VERSION = 3)
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_renderer_text_set_fixed_height_from_font(GTK_CELL_RENDERER_TEXT(renderer), 1);
+   column = gtk_tree_view_column_new_with_attributes(
+       _("Installed"), renderer,
+       "text", UPKG_COL_INSTALLED_VERSION,
+       NULL);
+   gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+   gtk_tree_view_column_set_fixed_width(column, 100);
+   gtk_tree_view_column_set_resizable(column, TRUE);
+   gtk_tree_view_column_set_sort_column_id(column, UPKG_COL_INSTALLED_VERSION);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+   // Column 4: Available Version (UPKG_COL_AVAILABLE_VERSION = 4)
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_renderer_text_set_fixed_height_from_font(GTK_CELL_RENDERER_TEXT(renderer), 1);
+   column = gtk_tree_view_column_new_with_attributes(
+       _("Available"), renderer,
+       "text", UPKG_COL_AVAILABLE_VERSION,
+       NULL);
+   gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+   gtk_tree_view_column_set_fixed_width(column, 100);
+   gtk_tree_view_column_set_resizable(column, TRUE);
+   gtk_tree_view_column_set_sort_column_id(column, UPKG_COL_AVAILABLE_VERSION);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+   // Column 5: Description (UPKG_COL_DESCRIPTION = 5)
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_renderer_text_set_fixed_height_from_font(GTK_CELL_RENDERER_TEXT(renderer), 1);
+   column = gtk_tree_view_column_new_with_attributes(
+       _("Description"), renderer,
+       "text", UPKG_COL_DESCRIPTION,
+       NULL);
+   gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+   gtk_tree_view_column_set_fixed_width(column, 400);
+   gtk_tree_view_column_set_resizable(column, TRUE);
+   gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
+
+   // Set name column as expander column
+   if (name_column)
+      gtk_tree_view_set_expander_column(GTK_TREE_VIEW(treeview), name_column);
+
+   g_object_set(G_OBJECT(treeview),
+                "fixed_height_mode", TRUE,
+                NULL);
+
+   // Set search column to package name
+   gtk_tree_view_set_search_column(GTK_TREE_VIEW(treeview), UPKG_COL_PACKAGE_NAME);
 }

@@ -21,6 +21,7 @@
 #include "ipackagebackend.h"
 #include <mutex>
 #include <chrono>
+#include <atomic>
 
 namespace PolySynaptic {
 
@@ -147,7 +148,7 @@ public:
 
 private:
     mutable mutex _mutex;           // Thread safety lock
-    mutable bool _availabilityChecked;
+    mutable std::atomic<bool> _availabilityChecked;
     mutable bool _isAvailable;
     mutable string _unavailableReason;
     mutable string _version;

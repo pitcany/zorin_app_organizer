@@ -195,7 +195,12 @@ static void rg_unified_pkg_list_get_value(GtkTreeModel* model,
                 GdkPixbuf* pixbuf = gtk_icon_theme_load_icon(
                     gtk_icon_theme_get_default(),
                     iconName, 16, GTK_ICON_LOOKUP_USE_BUILTIN, nullptr);
-                g_value_take_object(value, pixbuf);
+                if (pixbuf) {
+                    g_value_take_object(value, pixbuf);
+                } else {
+                    // Fallback: set to NULL if icon not found
+                    g_value_set_object(value, nullptr);
+                }
             }
             break;
 
@@ -236,7 +241,9 @@ static void rg_unified_pkg_list_get_value(GtkTreeModel* model,
 
         case UPKG_COL_PACKAGE_PTR:
             g_value_init(value, G_TYPE_POINTER);
-            g_value_set_pointer(value, (gpointer)&pkg);
+            // Return pointer to the actual element in the vector, not to local reference
+            // The vector is owned by the model and remains valid while the model exists
+            g_value_set_pointer(value, (gpointer)&((*list->packages)[idx]));
             break;
 
         case UPKG_COL_BACKEND_TYPE:
@@ -430,20 +437,119 @@ RGUnifiedPkgList* rg_unified_pkg_list_new(BackendManager* manager)
 
 void rg_unified_pkg_list_set_packages(RGUnifiedPkgList* list, vector<PackageInfo>* packages)
 {
+    GtkTreeModel* model = GTK_TREE_MODEL(list);
+
+    // If we had old data, emit row-deleted for all old rows first
+    if (list->packages && !list->packages->empty()) {
+        // Count old visible rows (respecting filter)
+        gint oldCount = 0;
+        for (const auto& pkg : *list->packages) {
+            if (list->filter.includes(pkg.backend)) {
+                oldCount++;
+            }
+        }
+        // Emit deletion signals in reverse order (required by GTK)
+        for (gint i = oldCount - 1; i >= 0; i--) {
+            GtkTreePath* path = gtk_tree_path_new_from_indices(i, -1);
+            gtk_tree_model_row_deleted(model, path);
+            gtk_tree_path_free(path);
+        }
+    }
+
+    // Set new packages
     list->packages = packages;
-    // Emit row-changed for all rows to refresh
-    // (simplified - could be optimized)
+
+    // Emit row-inserted for all new visible rows
+    if (list->packages && !list->packages->empty()) {
+        gint visibleIdx = 0;
+        for (gint i = 0; i < (gint)list->packages->size(); i++) {
+            const PackageInfo& pkg = (*list->packages)[i];
+            if (list->filter.includes(pkg.backend)) {
+                GtkTreePath* path = gtk_tree_path_new_from_indices(visibleIdx, -1);
+                GtkTreeIter iter;
+                iter.stamp = 1;
+                iter.user_data = GINT_TO_POINTER(i);  // Store actual vector index
+                iter.user_data2 = nullptr;
+                iter.user_data3 = nullptr;
+
+                gtk_tree_model_row_inserted(model, path, &iter);
+                gtk_tree_path_free(path);
+                visibleIdx++;
+            }
+        }
+    }
 }
 
 void rg_unified_pkg_list_set_filter(RGUnifiedPkgList* list, const BackendFilter& filter)
 {
+    if (!list->packages || list->packages->empty()) {
+        list->filter = filter;
+        return;
+    }
+
+    GtkTreeModel* model = GTK_TREE_MODEL(list);
+    BackendFilter oldFilter = list->filter;
+
+    // Calculate old visible count
+    gint oldCount = 0;
+    for (const auto& pkg : *list->packages) {
+        if (oldFilter.includes(pkg.backend)) {
+            oldCount++;
+        }
+    }
+
+    // Emit deletion signals for old visible rows (in reverse order)
+    for (gint i = oldCount - 1; i >= 0; i--) {
+        GtkTreePath* path = gtk_tree_path_new_from_indices(i, -1);
+        gtk_tree_model_row_deleted(model, path);
+        gtk_tree_path_free(path);
+    }
+
+    // Apply new filter
     list->filter = filter;
+
+    // Emit insertion signals for new visible rows
+    gint visibleIdx = 0;
+    for (gint i = 0; i < (gint)list->packages->size(); i++) {
+        const PackageInfo& pkg = (*list->packages)[i];
+        if (filter.includes(pkg.backend)) {
+            GtkTreePath* path = gtk_tree_path_new_from_indices(visibleIdx, -1);
+            GtkTreeIter iter;
+            iter.stamp = 1;
+            iter.user_data = GINT_TO_POINTER(i);
+            iter.user_data2 = nullptr;
+            iter.user_data3 = nullptr;
+
+            gtk_tree_model_row_inserted(model, path, &iter);
+            gtk_tree_path_free(path);
+            visibleIdx++;
+        }
+    }
 }
 
 void rg_unified_pkg_list_refresh(RGUnifiedPkgList* list)
 {
-    // Emit model-changed signal
-    // Views should reconnect to model
+    if (!list->packages || list->packages->empty()) return;
+
+    GtkTreeModel* model = GTK_TREE_MODEL(list);
+
+    // Emit row-changed for all visible rows to refresh the display
+    gint visibleIdx = 0;
+    for (gint i = 0; i < (gint)list->packages->size(); i++) {
+        const PackageInfo& pkg = (*list->packages)[i];
+        if (list->filter.includes(pkg.backend)) {
+            GtkTreePath* path = gtk_tree_path_new_from_indices(visibleIdx, -1);
+            GtkTreeIter iter;
+            iter.stamp = 1;
+            iter.user_data = GINT_TO_POINTER(i);
+            iter.user_data2 = nullptr;
+            iter.user_data3 = nullptr;
+
+            gtk_tree_model_row_changed(model, path, &iter);
+            gtk_tree_path_free(path);
+            visibleIdx++;
+        }
+    }
 }
 
 // ============================================================================

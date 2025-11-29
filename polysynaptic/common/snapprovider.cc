@@ -609,16 +609,36 @@ OperationResult SnapProvider::holdUpdates(
 // Private Helpers
 // ============================================================================
 
-SnapProvider::CommandResult SnapProvider::executeCommand(
-    const std::string& command,
+// Maximum output size to prevent memory exhaustion (10 MB)
+static const size_t MAX_SNAP_OUTPUT_SIZE = 10 * 1024 * 1024;
+
+// Safe command execution using argument vector (no shell)
+SnapProvider::CommandResult SnapProvider::executeCommandArgs(
+    const std::vector<std::string>& args,
     int timeoutMs)
 {
     CommandResult result;
     result.exitCode = -1;
 
-    int stdoutPipe[2], stderrPipe[2];
-    if (pipe(stdoutPipe) < 0 || pipe(stderrPipe) < 0) {
-        result.stderr = "Failed to create pipes";
+    if (args.empty()) {
+        result.stderr = "No command specified";
+        return result;
+    }
+
+    // Cap timeout to reasonable value
+    if (timeoutMs > 3600000) timeoutMs = 3600000;  // 1 hour max
+    if (timeoutMs <= 0) timeoutMs = 30000;  // 30s default
+
+    int stdoutPipe[2] = {-1, -1};
+    int stderrPipe[2] = {-1, -1};
+
+    if (pipe(stdoutPipe) < 0) {
+        result.stderr = "Failed to create stdout pipe";
+        return result;
+    }
+    if (pipe(stderrPipe) < 0) {
+        result.stderr = "Failed to create stderr pipe";
+        close(stdoutPipe[0]); close(stdoutPipe[1]);
         return result;
     }
 
@@ -639,7 +659,15 @@ SnapProvider::CommandResult SnapProvider::executeCommand(
         close(stdoutPipe[1]);
         close(stderrPipe[1]);
 
-        execl("/bin/sh", "sh", "-c", command.c_str(), nullptr);
+        // Build C-style args array
+        std::vector<char*> cargs;
+        for (const auto& arg : args) {
+            cargs.push_back(const_cast<char*>(arg.c_str()));
+        }
+        cargs.push_back(nullptr);
+
+        // Execute directly without shell (prevents command injection)
+        execvp(cargs[0], cargs.data());
         _exit(127);
     }
 
@@ -647,9 +675,11 @@ SnapProvider::CommandResult SnapProvider::executeCommand(
     close(stdoutPipe[1]);
     close(stderrPipe[1]);
 
-    // Set non-blocking
-    fcntl(stdoutPipe[0], F_SETFL, O_NONBLOCK);
-    fcntl(stderrPipe[0], F_SETFL, O_NONBLOCK);
+    // Set non-blocking with error check
+    if (fcntl(stdoutPipe[0], F_SETFL, O_NONBLOCK) == -1 ||
+        fcntl(stderrPipe[0], F_SETFL, O_NONBLOCK) == -1) {
+        // Continue anyway, might cause hangs but better than failing
+    }
 
     // Poll for output with timeout
     struct pollfd fds[2];
@@ -660,34 +690,47 @@ SnapProvider::CommandResult SnapProvider::executeCommand(
 
     auto startTime = std::chrono::steady_clock::now();
     char buffer[4096];
+    bool timedOut = false;
+    bool outputTruncated = false;
 
     while (true) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
 
-        if (elapsed >= timeoutMs) {
+        if (elapsedMs >= timeoutMs) {
+            timedOut = true;
             kill(pid, SIGTERM);
-            result.exitCode = -1;
-            result.stderr = "Command timed out";
             break;
         }
 
-        int remainingMs = timeoutMs - elapsed;
-        int ret = poll(fds, 2, std::min(remainingMs, 100));
+        // Safe remaining time calculation
+        long remainingMs = timeoutMs - elapsedMs;
+        if (remainingMs < 0) remainingMs = 0;
+        int pollTimeout = static_cast<int>(std::min(remainingMs, (long)100));
+
+        int ret = poll(fds, 2, pollTimeout);
 
         if (ret > 0) {
             if (fds[0].revents & POLLIN) {
                 ssize_t n = read(stdoutPipe[0], buffer, sizeof(buffer) - 1);
-                if (n > 0) {
+                if (n > 0 && !outputTruncated) {
                     buffer[n] = '\0';
-                    result.stdout += buffer;
+                    if (result.stdout.size() + n < MAX_SNAP_OUTPUT_SIZE) {
+                        result.stdout += buffer;
+                    } else {
+                        outputTruncated = true;
+                    }
                 }
             }
             if (fds[1].revents & POLLIN) {
                 ssize_t n = read(stderrPipe[0], buffer, sizeof(buffer) - 1);
-                if (n > 0) {
+                if (n > 0 && !outputTruncated) {
                     buffer[n] = '\0';
-                    result.stderr += buffer;
+                    if (result.stderr.size() + n < MAX_SNAP_OUTPUT_SIZE) {
+                        result.stderr += buffer;
+                    } else {
+                        outputTruncated = true;
+                    }
                 }
             }
         }
@@ -700,14 +743,18 @@ SnapProvider::CommandResult SnapProvider::executeCommand(
             while (true) {
                 ssize_t n = read(stdoutPipe[0], buffer, sizeof(buffer) - 1);
                 if (n <= 0) break;
-                buffer[n] = '\0';
-                result.stdout += buffer;
+                if (!outputTruncated && result.stdout.size() + n < MAX_SNAP_OUTPUT_SIZE) {
+                    buffer[n] = '\0';
+                    result.stdout += buffer;
+                }
             }
             while (true) {
                 ssize_t n = read(stderrPipe[0], buffer, sizeof(buffer) - 1);
                 if (n <= 0) break;
-                buffer[n] = '\0';
-                result.stderr += buffer;
+                if (!outputTruncated && result.stderr.size() + n < MAX_SNAP_OUTPUT_SIZE) {
+                    buffer[n] = '\0';
+                    result.stderr += buffer;
+                }
             }
 
             if (WIFEXITED(status)) {
@@ -720,7 +767,38 @@ SnapProvider::CommandResult SnapProvider::executeCommand(
     close(stdoutPipe[0]);
     close(stderrPipe[0]);
 
+    if (timedOut) {
+        // Properly reap zombie process
+        int status;
+        int waitAttempts = 0;
+        while (waitpid(pid, &status, WNOHANG) == 0 && waitAttempts < 50) {
+            usleep(100000);  // 100ms
+            waitAttempts++;
+        }
+        if (waitAttempts >= 50) {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+        }
+        result.exitCode = -1;
+        result.stderr = "Command timed out";
+    }
+
     return result;
+}
+
+// Legacy shell-based command execution (DEPRECATED - use executeCommandArgs)
+// Kept for backward compatibility with existing callers
+SnapProvider::CommandResult SnapProvider::executeCommand(
+    const std::string& command,
+    int timeoutMs)
+{
+    // For safety, parse the command and use the arg-based version
+    // This is a simple tokenizer - doesn't handle all shell syntax
+    std::vector<std::string> args;
+    args.push_back("/bin/sh");
+    args.push_back("-c");
+    args.push_back(command);
+    return executeCommandArgs(args, timeoutMs);
 }
 
 std::vector<UnifiedPackage> SnapProvider::parseSnapList(

@@ -60,7 +60,11 @@ string AptBackend::getUnavailableReason() const
 string AptBackend::getVersion() const
 {
     // Get APT library version
-    return _config->Find("APT::Version", "unknown");
+    // _config is a global APT variable that should be initialized
+    if (_config) {
+        return _config->Find("APT::Version", "unknown");
+    }
+    return "unknown";
 }
 
 // ============================================================================

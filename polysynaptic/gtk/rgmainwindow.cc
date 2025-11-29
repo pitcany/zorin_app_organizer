@@ -813,10 +813,14 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendMana
 
    // Initialize PolySynaptic multi-backend support BEFORE buildInterface
    // (because buildInterface creates the filter bar which needs _backendManager)
-   _backendManager = new PolySynaptic::BackendManager(_lister);
+   // Only create new BackendManager if one wasn't passed in
+   if (!_backendManager) {
+      _backendManager = new PolySynaptic::BackendManager(_lister);
+   }
    _backendFilterBar = NULL;
    _unifiedPkgList = NULL;
-   _unifiedViewMode = false;
+   _unifiedViewMode = true;  // PolySynaptic: Default to unified view showing all sources
+   _xapianChildWatchId = 0;
 
    // create all the interface stuff
    buildInterface();
@@ -901,6 +905,50 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendMana
    RGPreferencesWindow::applyProxySettings();
 }
 
+RGMainWindow::~RGMainWindow()
+{
+   // Cancel pending xapian child watch to prevent callback on destroyed object
+   if (_xapianChildWatchId != 0) {
+      g_source_remove(_xapianChildWatchId);
+      _xapianChildWatchId = 0;
+   }
+
+   // Disconnect signal handlers to prevent callbacks on destroyed objects
+   for (const auto& pair : _widgetSignalHandlers) {
+      if (pair.first && G_IS_OBJECT(pair.first)) {
+         g_signal_handler_disconnect(pair.first, pair.second);
+      }
+   }
+   _widgetSignalHandlers.clear();
+
+   // Clean up PolySynaptic multi-backend components
+   delete _backendManager;
+   _backendManager = nullptr;
+
+   delete _backendFilterBar;
+   _backendFilterBar = nullptr;
+
+   delete _backendStatusBar;
+   _backendStatusBar = nullptr;
+
+   // Clean up unified package list model
+   if (_unifiedPkgList) {
+      g_object_unref(_unifiedPkgList);
+      _unifiedPkgList = nullptr;
+   }
+
+   // Clean up static CSS provider (only if we're the last instance)
+   // Note: This is a static resource, so we don't unref it here
+   // as it may be shared across instances
+
+   // Clean up dialogs
+   delete _userDialog;
+   _userDialog = nullptr;
+
+   // Note: Other GTK widgets are managed by the parent RGGtkBuilderWindow
+   // and will be cleaned up when the builder is destroyed
+}
+
 #ifdef HAVE_XAPIAN
 gboolean RGMainWindow::xapianDoIndexUpdate(void *data)
 {
@@ -936,10 +984,11 @@ gboolean RGMainWindow::xapianDoIndexUpdate(void *data)
 		   "/usr/sbin/update-apt-xapian-index", 
 		   "--update", "-q",
 		   NULL};
-   if(g_spawn_async(NULL, const_cast<char **>(argp), NULL, 
+   if(g_spawn_async(NULL, const_cast<char **>(argp), NULL,
 		    (GSpawnFlags)(G_SPAWN_DO_NOT_REAP_CHILD),
 		    NULL, NULL, &pid, NULL)) {
-      g_child_watch_add(pid,  (GChildWatchFunc)xapianIndexUpdateFinished, me);
+      // Store watch ID so we can cancel in destructor if window closes
+      me->_xapianChildWatchId = g_child_watch_add(pid, (GChildWatchFunc)xapianIndexUpdateFinished, me);
       gtk_label_set_text(GTK_LABEL(gtk_builder_get_object(me->_builder, 
 							  "label_fast_search")),
 			 _("Rebuilding search index"));
@@ -959,13 +1008,17 @@ gboolean RGMainWindow::xapianDoIndexUpdate(void *data)
 void RGMainWindow::xapianIndexUpdateFinished(GPid pid, gint status, void* data)
 {
    RGMainWindow *me = (RGMainWindow *) data;
+
+   // Clear the watch ID since this callback is being invoked
+   me->_xapianChildWatchId = 0;
+
    if(_config->FindB("Debug::Synaptic::Xapian",false))
-      std::cerr << "xapianIndexUpdateFinished: "  
+      std::cerr << "xapianIndexUpdateFinished: "
 		<< WEXITSTATUS(status) << std::endl;
 #ifdef HAVE_XAPIAN
    me->_lister->openXapianIndex();
 #endif
-   gtk_label_set_text(GTK_LABEL(gtk_builder_get_object(me->_builder, 
+   gtk_label_set_text(GTK_LABEL(gtk_builder_get_object(me->_builder,
 						     "label_fast_search")),
 		      _("Quick filter"));
    gtk_widget_set_sensitive(GTK_WIDGET(gtk_builder_get_object
@@ -976,14 +1029,14 @@ void RGMainWindow::xapianIndexUpdateFinished(GPid pid, gint status, void* data)
 
 void RGMainWindow::buildTreeView()
 {
- 
+
    // remove old tree columns
    if (_treeView) {
       // unset model fist, otherwise the _remove_column takes *ages*
       // (within the seconds range for each call)
       gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), NULL);
       GList *columns = gtk_tree_view_get_columns(GTK_TREE_VIEW(_treeView));
-      for (GList * li = g_list_first(columns); 
+      for (GList * li = g_list_first(columns);
            li != NULL;
            li = g_list_next(li)) {
          int i = gtk_tree_view_remove_column(GTK_TREE_VIEW(_treeView),
@@ -996,10 +1049,16 @@ void RGMainWindow::buildTreeView()
    _treeView = GTK_WIDGET(gtk_builder_get_object
                           (_builder, "treeview_packages"));
    assert(_treeView);
-   setupTreeView(_treeView);
-   _pkgList = GTK_TREE_MODEL(gtk_pkg_list_new(_lister));
-   gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), _pkgList);
 
+   // Setup columns based on view mode
+   if (_unifiedViewMode && _backendManager) {
+      setupUnifiedTreeView(_treeView);
+      // Don't set model yet - will be set when packages are loaded
+   } else {
+      setupTreeView(_treeView);
+      _pkgList = GTK_TREE_MODEL(gtk_pkg_list_new(_lister));
+      gtk_tree_view_set_model(GTK_TREE_VIEW(_treeView), _pkgList);
+   }
 }
 
 void RGMainWindow::buildInterface()
@@ -1386,6 +1445,11 @@ void RGMainWindow::buildInterface()
    // build the treeview
    buildTreeView();
 
+   // If in unified mode, load initial package data
+   if (_unifiedViewMode && _backendManager) {
+      loadUnifiedInstalledPackages();
+   }
+
    g_signal_connect(G_OBJECT(_treeView), "button-press-event",
                     (GCallback) cbPackageListClicked, this);
 
@@ -1640,9 +1704,11 @@ void RGMainWindow::buildInterface()
        });
 
    // Add a toggle button for unified view mode
-   GtkWidget *unifiedToggle = gtk_check_button_new_with_label(_("All Sources"));
+   GtkWidget *unifiedToggle = gtk_check_button_new_with_label(_("Unified View"));
    gtk_widget_set_tooltip_text(unifiedToggle,
-       _("Search across APT, Snap, and Flatpak"));
+       _("Show packages from APT, Snap, and Flatpak together"));
+   // PolySynaptic: Set active by default to match _unifiedViewMode = true
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(unifiedToggle), TRUE);
    g_signal_connect(unifiedToggle, "toggled", G_CALLBACK(cbToggleUnifiedView), this);
 
    // Pack the toggle and filter bar into the toolbar area
@@ -1652,9 +1718,9 @@ void RGMainWindow::buildInterface()
       gtk_box_pack_end(GTK_BOX(toolbar), unifiedToggle, FALSE, FALSE, 5);
       gtk_widget_show(unifiedToggle);
 
-      // Add filter bar (initially hidden until unified mode is enabled)
+      // Add filter bar (shown by default since unified mode is enabled)
       gtk_box_pack_end(GTK_BOX(toolbar), _backendFilterBar->getWidget(), FALSE, FALSE, 0);
-      gtk_widget_hide(_backendFilterBar->getWidget());
+      gtk_widget_show(_backendFilterBar->getWidget());
    }
 
    // Create unified package list model
@@ -2232,14 +2298,24 @@ void RGMainWindow::cbToggleUnifiedView(GtkWidget *self, void *data)
       }
    }
 
-   // If switching to unified mode with existing search text, re-search
+   // If switching to unified mode
    if (active) {
+      // Setup unified view columns first
+      setupUnifiedTreeView(me->_treeView);
+
       const gchar *searchText = gtk_entry_get_text(GTK_ENTRY(me->_entry_fast_search));
       if (searchText && strlen(searchText) > 0) {
+         // Re-search with existing search text
          me->doUnifiedSearch(searchText);
+      } else {
+         // No search text - load installed packages from selected backends
+         me->loadUnifiedInstalledPackages();
       }
    } else {
-      // Switch back to legacy view - refresh with current filter
+      // Switch back to legacy view - rebuild columns and refresh
+      setupTreeView(me->_treeView);
+      me->_pkgList = GTK_TREE_MODEL(gtk_pkg_list_new(me->_lister));
+      gtk_tree_view_set_model(GTK_TREE_VIEW(me->_treeView), me->_pkgList);
       me->refreshTable();
    }
 }
@@ -2253,10 +2329,14 @@ void RGMainWindow::onBackendFilterChanged(const PolySynaptic::BackendFilter& fil
       rg_unified_pkg_list_set_filter(_unifiedPkgList, filter);
    }
 
-   // Re-search with new filter
+   // Re-search or reload installed packages
    const gchar *searchText = gtk_entry_get_text(GTK_ENTRY(_entry_fast_search));
    if (searchText && strlen(searchText) > 0) {
+      // Re-search with new filter
       doUnifiedSearch(searchText);
+   } else {
+      // No search text - reload installed packages with new filter
+      loadUnifiedInstalledPackages();
    }
 }
 
@@ -2290,6 +2370,33 @@ void RGMainWindow::doUnifiedSearch(const string& query)
    // Update status text
    gchar *statusText = g_strdup_printf(
        _("%zu packages found across all sources"), _unifiedPackages.size());
+   setStatusText(statusText);
+   g_free(statusText);
+}
+
+void RGMainWindow::loadUnifiedInstalledPackages()
+{
+   if (!_unifiedViewMode || !_backendManager) return;
+
+   setBusyCursor(true);
+
+   // Get the current filter from the filter bar
+   PolySynaptic::BackendFilter filter = PolySynaptic::BackendFilter::All();
+   if (_backendFilterBar) {
+      filter = _backendFilterBar->getFilter();
+   }
+
+   // Get installed packages from selected backends
+   _unifiedPackages = _backendManager->getInstalledPackages(filter);
+
+   // Update the tree view with results
+   updateUnifiedTreeView();
+
+   setBusyCursor(false);
+
+   // Update status text
+   gchar *statusText = g_strdup_printf(
+       _("%zu installed packages from selected sources"), _unifiedPackages.size());
    setStatusText(statusText);
    g_free(statusText);
 }

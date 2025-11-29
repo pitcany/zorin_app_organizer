@@ -21,6 +21,7 @@
 #include "ipackagebackend.h"
 #include <mutex>
 #include <set>
+#include <atomic>
 
 namespace PolySynaptic {
 
@@ -174,7 +175,7 @@ public:
 
 private:
     mutable mutex _mutex;
-    mutable bool _availabilityChecked;
+    mutable std::atomic<bool> _availabilityChecked;
     mutable bool _isAvailable;
     mutable string _unavailableReason;
     mutable string _version;

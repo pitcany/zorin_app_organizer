@@ -4,7 +4,7 @@ AM_CPPFLAGS = -I${top_srcdir}/common -I${top_srcdir}/gtk \
 	@GTK_CFLAGS@ @VTE_CFLAGS@ @LP_CFLAGS@ $(LIBTAGCOLL_CFLAGS) $(LIBEPT_CFLAGS) \
 	-O0 -g3 -std=c++17
 
-noinst_PROGRAMS = test_rpackage test_rpackageview test_gtkpkglist test_rpackagefilter test_backends
+noinst_PROGRAMS = test_rpackage test_rpackageview test_gtkpkglist test_rpackagefilter test_backends test_backend_diagnosis test_unified_view
 
 LDADD = \
 	${top_builddir}/common/libsynaptic.a\
@@ -27,6 +27,14 @@ test_gtkpkglist_SOURCES= test_gtkpkglist.cc \
 
 # PolySynaptic backend tests
 test_backends_SOURCES= test_backends.cc
+
+# Backend diagnosis tests
+test_backend_diagnosis_SOURCES= test_backend_diagnosis.cc
+
+# Unified view TreeModel tests
+test_unified_view_SOURCES= test_unified_view.cc \
+	${top_srcdir}/gtk/rgunifiedview.cc \
+	${top_srcdir}/gtk/rgutils.cc
 
 # Run all tests
 check-local: test_backends

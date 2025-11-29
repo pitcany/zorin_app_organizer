@@ -247,25 +247,31 @@ vector<PackageInfo> BackendManager::searchPackages(
     }
 
     // Launch parallel searches
+    // Note: We capture options by value to ensure it remains valid even if
+    // the caller's stack frame changes. Backend pointers are guaranteed valid
+    // because we hold _mutex and getEnabledBackends returns owned pointers.
     vector<future<vector<PackageInfo>>> futures;
-    atomic<int> completedCount(0);
+    auto completedCount = make_shared<atomic<int>>(0);
     int totalBackends = filteredBackends.size();
 
     for (auto* backend : filteredBackends) {
-        futures.push_back(async(launch::async, [backend, &options, &progress, &completedCount, totalBackends]() {
+        // Capture options by value, backend by raw pointer (valid while lock held)
+        // Capture progress by value (it's a std::function, copyable)
+        SearchOptions capturedOptions = options;  // Copy for thread safety
+        futures.push_back(async(launch::async, [backend, capturedOptions, progress, completedCount, totalBackends]() {
             // Create backend-specific progress wrapper
             ProgressCallback backendProgress = nullptr;
             if (progress) {
-                backendProgress = [&progress, &completedCount, totalBackends, backend](double pct, const string& msg) {
-                    int completed = completedCount.load();
+                backendProgress = [progress, completedCount, totalBackends, backend](double pct, const string& msg) {
+                    int completed = completedCount->load();
                     double overallPct = (completed + pct) / totalBackends;
                     string fullMsg = "[" + backend->getName() + "] " + msg;
                     return progress(overallPct, fullMsg);
                 };
             }
 
-            auto pkgs = backend->searchPackages(options, backendProgress);
-            completedCount++;
+            auto pkgs = backend->searchPackages(capturedOptions, backendProgress);
+            (*completedCount)++;
             return pkgs;
         }));
     }

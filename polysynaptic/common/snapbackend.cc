@@ -63,18 +63,22 @@ string SnapBackend::getVersion() const
 
 void SnapBackend::checkAvailability() const
 {
-    if (_availabilityChecked) return;
+    // Use acquire memory order for first check (pairs with release below)
+    if (_availabilityChecked.load(std::memory_order_acquire)) return;
 
     lock_guard<mutex> lock(_mutex);
-    if (_availabilityChecked) return;
+    // Second check inside lock
+    if (_availabilityChecked.load(std::memory_order_relaxed)) return;
 
-    _availabilityChecked = true;
+    // Note: We set this to true AFTER initialization completes (at end of function)
+    // to ensure all data is visible to other threads
 
     // Check if snap command exists
     auto result = executeCommand({"which", "snap"}, 5);
     if (!result.success || result.exitCode != 0) {
         _isAvailable = false;
         _unavailableReason = "snap command not found. Install snapd to enable Snap support.";
+        _availabilityChecked.store(true, std::memory_order_release);
         return;
     }
 
@@ -82,6 +86,7 @@ void SnapBackend::checkAvailability() const
     if (!isSnapdRunning()) {
         _isAvailable = false;
         _unavailableReason = "snapd service is not running. Start it with: sudo systemctl start snapd";
+        _availabilityChecked.store(true, std::memory_order_release);
         return;
     }
 
@@ -100,6 +105,8 @@ void SnapBackend::checkAvailability() const
     }
 
     _isAvailable = true;
+    // Use release memory order to ensure all writes are visible
+    _availabilityChecked.store(true, std::memory_order_release);
 }
 
 bool SnapBackend::isSnapdRunning() const

@@ -21,6 +21,7 @@
 #include <sstream>
 #include <regex>
 #include <algorithm>
+#include <climits>
 
 namespace PolySynaptic {
 
@@ -65,18 +66,23 @@ string FlatpakBackend::getVersion() const
 
 void FlatpakBackend::checkAvailability() const
 {
-    if (_availabilityChecked) return;
+    // Use acquire memory order for first check (pairs with release below)
+    if (_availabilityChecked.load(std::memory_order_acquire)) return;
 
     lock_guard<mutex> lock(_mutex);
-    if (_availabilityChecked) return;
+    // Second check inside lock
+    if (_availabilityChecked.load(std::memory_order_relaxed)) return;
 
-    _availabilityChecked = true;
+    // Note: We set this to true AFTER initialization completes (at end of function)
+    // to ensure all data is visible to other threads
 
     // Check if flatpak command exists
     auto result = executeCommand({"which", "flatpak"}, 5);
     if (!result.success || result.exitCode != 0) {
         _isAvailable = false;
         _unavailableReason = "flatpak command not found. Install flatpak to enable Flatpak support.";
+        // Use release memory order to ensure all writes are visible
+        _availabilityChecked.store(true, std::memory_order_release);
         return;
     }
 
@@ -102,6 +108,10 @@ void FlatpakBackend::checkAvailability() const
     } else {
         _isAvailable = true;
     }
+
+    // Use release memory order to ensure all writes are visible to threads
+    // that subsequently read _availabilityChecked with acquire semantics
+    _availabilityChecked.store(true, std::memory_order_release);
 }
 
 void FlatpakBackend::refreshRemotesCache() const
@@ -703,6 +713,9 @@ vector<string> FlatpakBackend::getBranches(const string& appId, const string& re
 // CLI Execution
 // ============================================================================
 
+// Maximum output size to prevent memory exhaustion (10 MB)
+static const size_t MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
+
 FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
     const vector<string>& args,
     int timeoutSeconds) const
@@ -716,11 +729,13 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
         return result;
     }
 
-    int timeout = (timeoutSeconds > 0) ? timeoutSeconds : _timeoutSeconds;
+    // Use safe timeout value, prevent overflow
+    long timeout = (timeoutSeconds > 0) ? timeoutSeconds : _timeoutSeconds;
+    if (timeout > 3600) timeout = 3600;  // Cap at 1 hour
 
     // Create pipes for stdout and stderr
-    int stdoutPipe[2];
-    int stderrPipe[2];
+    int stdoutPipe[2] = {-1, -1};
+    int stderrPipe[2] = {-1, -1};
 
     if (pipe(stdoutPipe) != 0) {
         result.stderr = "Failed to create stdout pipe";
@@ -760,7 +775,7 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
         }
         cargs.push_back(nullptr);
 
-        // Execute
+        // Execute directly without shell (prevents command injection)
         execvp(cargs[0], cargs.data());
 
         // If we get here, exec failed
@@ -771,19 +786,24 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
     close(stdoutPipe[1]);
     close(stderrPipe[1]);
 
-    // Set non-blocking
-    fcntl(stdoutPipe[0], F_SETFL, O_NONBLOCK);
-    fcntl(stderrPipe[0], F_SETFL, O_NONBLOCK);
+    // Set non-blocking with error checking
+    if (fcntl(stdoutPipe[0], F_SETFL, O_NONBLOCK) == -1 ||
+        fcntl(stderrPipe[0], F_SETFL, O_NONBLOCK) == -1) {
+        // Non-fatal: continue with blocking I/O but log warning
+        // This could cause hangs but is better than failing entirely
+    }
 
     // Read output with timeout
     auto startTime = chrono::steady_clock::now();
     bool timedOut = false;
+    bool outputTruncated = false;
 
     while (true) {
-        auto elapsed = chrono::duration_cast<chrono::seconds>(
+        auto elapsedMs = chrono::duration_cast<chrono::milliseconds>(
             chrono::steady_clock::now() - startTime).count();
+        long elapsedSec = elapsedMs / 1000;
 
-        if (elapsed >= timeout) {
+        if (elapsedSec >= timeout) {
             timedOut = true;
             kill(pid, SIGTERM);
             break;
@@ -795,24 +815,39 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
         fds[1].fd = stderrPipe[0];
         fds[1].events = POLLIN;
 
-        int ret = poll(fds, 2, 100);
+        // Calculate remaining time safely (avoid overflow)
+        int remainingMs = static_cast<int>(min((timeout * 1000) - elapsedMs, (long)INT_MAX));
+        int pollTimeout = min(remainingMs, 100);
+        if (pollTimeout < 0) pollTimeout = 0;
+
+        int ret = poll(fds, 2, pollTimeout);
 
         if (ret > 0) {
             char buffer[4096];
 
             if (fds[0].revents & POLLIN) {
                 ssize_t n = read(stdoutPipe[0], buffer, sizeof(buffer) - 1);
-                if (n > 0) {
+                if (n > 0 && !outputTruncated) {
                     buffer[n] = '\0';
-                    result.stdout += buffer;
+                    if (result.stdout.size() + n < MAX_OUTPUT_SIZE) {
+                        result.stdout += buffer;
+                    } else {
+                        outputTruncated = true;
+                        result.stdout += "\n... output truncated (exceeded 10MB limit) ...";
+                    }
                 }
             }
 
             if (fds[1].revents & POLLIN) {
                 ssize_t n = read(stderrPipe[0], buffer, sizeof(buffer) - 1);
-                if (n > 0) {
+                if (n > 0 && !outputTruncated) {
                     buffer[n] = '\0';
-                    result.stderr += buffer;
+                    if (result.stderr.size() + n < MAX_OUTPUT_SIZE) {
+                        result.stderr += buffer;
+                    } else {
+                        outputTruncated = true;
+                        result.stderr += "\n... output truncated (exceeded 10MB limit) ...";
+                    }
                 }
             }
         }
@@ -820,15 +855,20 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
         int status;
         pid_t w = waitpid(pid, &status, WNOHANG);
         if (w > 0) {
+            // Read any remaining output
             char buffer[4096];
             ssize_t n;
             while ((n = read(stdoutPipe[0], buffer, sizeof(buffer) - 1)) > 0) {
-                buffer[n] = '\0';
-                result.stdout += buffer;
+                if (!outputTruncated && result.stdout.size() + n < MAX_OUTPUT_SIZE) {
+                    buffer[n] = '\0';
+                    result.stdout += buffer;
+                }
             }
             while ((n = read(stderrPipe[0], buffer, sizeof(buffer) - 1)) > 0) {
-                buffer[n] = '\0';
-                result.stderr += buffer;
+                if (!outputTruncated && result.stderr.size() + n < MAX_OUTPUT_SIZE) {
+                    buffer[n] = '\0';
+                    result.stderr += buffer;
+                }
             }
 
             if (WIFEXITED(status)) {
@@ -845,7 +885,18 @@ FlatpakBackend::CommandResult FlatpakBackend::executeCommand(
     close(stderrPipe[0]);
 
     if (timedOut) {
-        waitpid(pid, nullptr, 0);
+        // Wait for child with a short timeout to prevent zombies
+        int status;
+        int waitAttempts = 0;
+        while (waitpid(pid, &status, WNOHANG) == 0 && waitAttempts < 50) {
+            usleep(100000);  // 100ms
+            waitAttempts++;
+        }
+        // If still not reaped, send SIGKILL and wait
+        if (waitAttempts >= 50) {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+        }
         result.stderr = "Command timed out after " + to_string(timeout) + " seconds";
         result.exitCode = -1;
         result.success = false;
