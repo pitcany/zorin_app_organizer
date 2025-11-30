@@ -831,6 +831,7 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendMana
    }
    _backendFilterBar = NULL;
    _unifiedPkgList = NULL;
+   _unifiedPopupMenu = NULL;
    _unifiedViewMode = true;  // PolySynaptic: Default to unified view showing all sources
    _xapianChildWatchId = 0;
 
@@ -850,16 +851,6 @@ RGMainWindow::RGMainWindow(RPackageLister *packLister, PolySynaptic::BackendMana
          GtkWidget *parent = gtk_widget_get_parent(statusBar);
          if (parent && GTK_IS_BOX(parent)) {
             gtk_box_pack_end(GTK_BOX(parent), _backendStatusBar->getWidget(), FALSE, FALSE, 5);
-         }
-      }
-
-      // Log backend availability
-      auto statuses = _backendManager->getBackendStatuses();
-      for (const auto& status : statuses) {
-         if (status.available) {
-            std::cout << "Backend available: " << status.name << " " << status.version << std::endl;
-         } else {
-            std::cout << "Backend unavailable: " << status.name << " - " << status.unavailableReason << std::endl;
          }
       }
    }
@@ -1028,10 +1019,6 @@ void RGMainWindow::xapianIndexUpdateFinished(GPid pid, gint status, void* data)
 
 void RGMainWindow::buildTreeView()
 {
-   std::cerr << "DEBUG buildTreeView: _unifiedViewMode=" << _unifiedViewMode
-             << " _backendManager=" << _backendManager
-             << " _unifiedPkgList=" << _unifiedPkgList << std::endl;
-
    // remove old tree columns
    if (_treeView) {
       // unset model fist, otherwise the _remove_column takes *ages*
@@ -1447,22 +1434,16 @@ void RGMainWindow::buildInterface()
 
    // PolySynaptic: Create unified package list model BEFORE buildTreeView
    // This must happen before buildTreeView() and loadUnifiedInstalledPackages()
-   std::cerr << "DEBUG: About to create _unifiedPkgList, _backendManager=" << _backendManager << std::endl;
    if (_backendManager) {
       _unifiedPkgList = rg_unified_pkg_list_new(_backendManager);
-      std::cerr << "DEBUG: Created _unifiedPkgList=" << _unifiedPkgList << std::endl;
    }
 
    // build the treeview
-   std::cerr << "DEBUG: About to call buildTreeView(), _unifiedViewMode=" << _unifiedViewMode << std::endl;
    buildTreeView();
-   std::cerr << "DEBUG: buildTreeView() completed" << std::endl;
 
    // If in unified mode, load initial package data
    if (_unifiedViewMode && _backendManager) {
-      std::cerr << "DEBUG: About to call loadUnifiedInstalledPackages()" << std::endl;
       loadUnifiedInstalledPackages();
-      std::cerr << "DEBUG: loadUnifiedInstalledPackages() completed, _unifiedPackages.size()=" << _unifiedPackages.size() << std::endl;
    }
 
    g_signal_connect(G_OBJECT(_treeView), "button-press-event",
@@ -1620,6 +1601,9 @@ void RGMainWindow::buildInterface()
 #endif
 
    gtk_widget_show(_popupMenu);
+
+   // PolySynaptic: Build unified view popup menu (for Snap/Flatpak packages)
+   buildUnifiedPopupMenu();
 
    //FIXME/MAYBE: create this dynmaic?!?
    //    for (vector<string>::const_iterator I = views.begin();
@@ -2018,10 +2002,7 @@ gboolean RGMainWindow::cbPackageListClicked(GtkWidget *treeview,
                                             GdkEventButton *event,
                                             gpointer data)
 {
-   //cout << "RGMainWindow::cbPackageListClicked()" << endl;
-
    RGMainWindow *me = (RGMainWindow *) data;
-   RPackage *pkg = NULL;
    GtkTreePath *path;
    GtkTreeViewColumn *column;
 
@@ -2041,12 +2022,9 @@ gboolean RGMainWindow::cbPackageListClicked(GtkWidget *treeview,
          /* Check if it's either a right-button click, or a left-button
           * click on the status column. */
          if (!(event->button == 3 ||
-               (event->button == 1 && 
+               (event->button == 1 &&
                 strcmp(gtk_tree_view_column_get_title(column), "S") == 0)))
             return false;
-
-         vector<RPackage *> selected_pkgs;
-         GList *li = NULL;
 
          // Treat click with CONTROL as additional selection
 	 if((event->state & GDK_CONTROL_MASK) != GDK_CONTROL_MASK
@@ -2054,7 +2032,31 @@ gboolean RGMainWindow::cbPackageListClicked(GtkWidget *treeview,
             gtk_tree_selection_unselect_all(selection);
          gtk_tree_selection_select_path(selection, path);
 
-         li = gtk_tree_selection_get_selected_rows(selection, &me->_pkgList);
+         // PolySynaptic: Handle unified mode differently
+         if (me->_unifiedViewMode && me->_unifiedPkgList) {
+            GtkTreeModel *model = GTK_TREE_MODEL(me->_unifiedPkgList);
+            vector<PolySynaptic::PackageInfo*> selected_pkgs;
+            GList *li = gtk_tree_selection_get_selected_rows(selection, &model);
+
+            for (li = g_list_first(li); li != NULL; li = g_list_next(li)) {
+               if (gtk_tree_model_get_iter(model, &iter, (GtkTreePath *)(li->data))) {
+                  PolySynaptic::PackageInfo *pkgInfo = nullptr;
+                  gtk_tree_model_get(model, &iter, UPKG_COL_PACKAGE_PTR, &pkgInfo, -1);
+                  if (pkgInfo)
+                     selected_pkgs.push_back(pkgInfo);
+               }
+            }
+            g_list_free_full(li, (GDestroyNotify)gtk_tree_path_free);
+
+            cbUnifiedTreeviewPopupMenu(treeview, event, me, selected_pkgs);
+            return true;
+         }
+
+         // Legacy APT-only mode
+         RPackage *pkg = NULL;
+         vector<RPackage *> selected_pkgs;
+         GList *li = gtk_tree_selection_get_selected_rows(selection, &me->_pkgList);
+
          for (li = g_list_first(li); li != NULL; li = g_list_next(li)) {
             gtk_tree_model_get_iter(me->_pkgList, &iter,
                                     (GtkTreePath *) (li->data));
@@ -3667,6 +3669,193 @@ void RGMainWindow::cbTreeviewPopupMenu(GtkWidget *treeview,
    } else {
       gtk_menu_popup_at_pointer(GTK_MENU(me->_popupMenu), (GdkEvent*)event);
    }
+}
+
+// ============================================================================
+// PolySynaptic: Unified view package operations (Snap/Flatpak support)
+// ============================================================================
+
+void RGMainWindow::buildUnifiedPopupMenu()
+{
+   _unifiedPopupMenu = gtk_menu_new();
+
+   // Install item
+   GtkWidget *menuitem = gtk_menu_item_new_with_label(_("Install"));
+   g_object_set_data(G_OBJECT(menuitem), "me", this);
+   g_signal_connect(menuitem, "activate",
+                    G_CALLBACK(cbUnifiedPkgInstall), this);
+   gtk_menu_shell_append(GTK_MENU_SHELL(_unifiedPopupMenu), menuitem);
+
+   // Remove item
+   menuitem = gtk_menu_item_new_with_label(_("Remove"));
+   g_object_set_data(G_OBJECT(menuitem), "me", this);
+   g_signal_connect(menuitem, "activate",
+                    G_CALLBACK(cbUnifiedPkgRemove), this);
+   gtk_menu_shell_append(GTK_MENU_SHELL(_unifiedPopupMenu), menuitem);
+
+   gtk_widget_show_all(_unifiedPopupMenu);
+}
+
+void RGMainWindow::cbUnifiedTreeviewPopupMenu(GtkWidget *treeview,
+                                              GdkEventButton *event,
+                                              RGMainWindow *me,
+                                              vector<PolySynaptic::PackageInfo*> selected_pkgs)
+{
+   using namespace PolySynaptic;
+
+   if (selected_pkgs.empty())
+      return;
+
+   // Get first selected package to determine available actions
+   PackageInfo *pkg = selected_pkgs[0];
+   if (!pkg)
+      return;
+
+   // Update menu item sensitivity based on package state
+   GList *items = gtk_container_get_children(GTK_CONTAINER(me->_unifiedPopupMenu));
+   int i = 0;
+   for (GList *item = items; item != NULL; item = g_list_next(item), i++) {
+      gtk_widget_set_sensitive(GTK_WIDGET(item->data), FALSE);
+
+      // Install button (i == 0): enable if not installed
+      if (i == 0 && pkg->installStatus == InstallStatus::NOT_INSTALLED) {
+         gtk_widget_set_sensitive(GTK_WIDGET(item->data), TRUE);
+      }
+
+      // Remove button (i == 1): enable if installed
+      if (i == 1 && pkg->installStatus == InstallStatus::INSTALLED) {
+         gtk_widget_set_sensitive(GTK_WIDGET(item->data), TRUE);
+      }
+   }
+   g_list_free(items);
+
+   // Store the selected packages for the callback to use
+   // We'll use g_object_set_data to pass the selection
+   g_object_set_data(G_OBJECT(me->_unifiedPopupMenu), "selected_pkg", pkg);
+
+   gtk_menu_popup_at_pointer(GTK_MENU(me->_unifiedPopupMenu), (GdkEvent*)event);
+}
+
+void RGMainWindow::cbUnifiedPkgInstall(GtkWidget *self, void *data)
+{
+   RGMainWindow *me = static_cast<RGMainWindow*>(data);
+   if (!me || !me->_backendManager)
+      return;
+
+   PolySynaptic::PackageInfo *pkg = static_cast<PolySynaptic::PackageInfo*>(
+      g_object_get_data(G_OBJECT(me->_unifiedPopupMenu), "selected_pkg"));
+
+   if (pkg) {
+      me->unifiedPkgInstall(*pkg);
+   }
+}
+
+void RGMainWindow::cbUnifiedPkgRemove(GtkWidget *self, void *data)
+{
+   RGMainWindow *me = static_cast<RGMainWindow*>(data);
+   if (!me || !me->_backendManager)
+      return;
+
+   PolySynaptic::PackageInfo *pkg = static_cast<PolySynaptic::PackageInfo*>(
+      g_object_get_data(G_OBJECT(me->_unifiedPopupMenu), "selected_pkg"));
+
+   if (pkg) {
+      me->unifiedPkgRemove(*pkg);
+   }
+}
+
+void RGMainWindow::unifiedPkgInstall(const PolySynaptic::PackageInfo& pkg)
+{
+   using namespace PolySynaptic;
+
+   if (!_backendManager)
+      return;
+
+   // Get the appropriate backend
+   IPackageBackend *backend = _backendManager->getBackend(pkg.backend);
+   if (!backend) {
+      _userDialog->error(_("Backend not available for this package type."));
+      return;
+   }
+
+   // Show confirmation dialog
+   string msg = string(_("Install package '")) + pkg.name + "'?";
+   if (!_userDialog->confirm(msg.c_str()))
+      return;
+
+   setInterfaceLocked(TRUE);
+   setStatusText((char*)(_("Installing ") + pkg.name + "...").c_str());
+
+   // Perform the installation
+   OperationResult result = backend->installPackage(pkg.id, nullptr);
+
+   setInterfaceLocked(FALSE);
+
+   if (result.success) {
+      setStatusText((char*)(_("Installed: ") + pkg.name).c_str());
+      // Refresh the package list
+      loadUnifiedInstalledPackages();
+   } else {
+      string errMsg = _("Installation failed: ") + result.message;
+      _userDialog->error(errMsg.c_str());
+      setStatusText((char*)_("Installation failed"));
+   }
+}
+
+void RGMainWindow::unifiedPkgRemove(const PolySynaptic::PackageInfo& pkg)
+{
+   using namespace PolySynaptic;
+
+   if (!_backendManager)
+      return;
+
+   // Get the appropriate backend
+   IPackageBackend *backend = _backendManager->getBackend(pkg.backend);
+   if (!backend) {
+      _userDialog->error(_("Backend not available for this package type."));
+      return;
+   }
+
+   // Show confirmation dialog
+   string msg = string(_("Remove package '")) + pkg.name + "'?";
+   if (!_userDialog->confirm(msg.c_str()))
+      return;
+
+   setInterfaceLocked(TRUE);
+   setStatusText((char*)(_("Removing ") + pkg.name + "...").c_str());
+
+   // Perform the removal
+   OperationResult result = backend->removePackage(pkg.id, false, nullptr);
+
+   setInterfaceLocked(FALSE);
+
+   if (result.success) {
+      setStatusText((char*)(_("Removed: ") + pkg.name).c_str());
+      // Refresh the package list
+      loadUnifiedInstalledPackages();
+   } else {
+      string errMsg = _("Removal failed: ") + result.message;
+      _userDialog->error(errMsg.c_str());
+      setStatusText((char*)_("Removal failed"));
+   }
+}
+
+PolySynaptic::PackageInfo* RGMainWindow::selectedUnifiedPackage()
+{
+   if (!_unifiedViewMode || !_unifiedPkgList)
+      return nullptr;
+
+   GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(_treeView));
+   GtkTreeModel *model = GTK_TREE_MODEL(_unifiedPkgList);
+   GtkTreeIter iter;
+
+   if (!gtk_tree_selection_get_selected(selection, &model, &iter))
+      return nullptr;
+
+   PolySynaptic::PackageInfo *pkg = nullptr;
+   gtk_tree_model_get(model, &iter, UPKG_COL_PACKAGE_PTR, &pkg, -1);
+
+   return pkg;
 }
 
 GtkWidget* RGMainWindow::buildWeakDependsMenu(RPackage *pkg, 

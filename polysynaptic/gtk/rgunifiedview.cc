@@ -11,7 +11,6 @@
 #include "rgunifiedview.h"
 #include "rgutils.h"
 
-#include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -202,16 +201,10 @@ static void rg_unified_pkg_list_get_value(GtkTreeModel* model,
 {
     RGUnifiedPkgList* list = RG_UNIFIED_PKG_LIST(model);
 
-    if (!list->packages) {
-        std::cerr << "DEBUG get_value: packages is NULL!" << std::endl;
-        return;
-    }
+    if (!list->packages) return;
 
     gint idx = GPOINTER_TO_INT(iter->user_data);
-    if (idx < 0 || idx >= (gint)list->packages->size()) {
-        std::cerr << "DEBUG get_value: idx=" << idx << " out of range (size=" << list->packages->size() << ")" << std::endl;
-        return;
-    }
+    if (idx < 0 || idx >= (gint)list->packages->size()) return;
 
     const PackageInfo& pkg = (*list->packages)[idx];
 

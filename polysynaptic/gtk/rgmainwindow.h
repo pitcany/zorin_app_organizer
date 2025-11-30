@@ -133,6 +133,7 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
 
    // popup-menu in the treeview
    GtkWidget *_popupMenu;
+   GtkWidget *_unifiedPopupMenu;  // popup menu for unified view
 
    // the description buffer
    GtkTextBuffer *_pkgCommonTextBuffer;
@@ -197,6 +198,12 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
    void pkgRemoveHelper(RPackage *pkg, bool purge = false,
 		   	bool withDeps = false);
    void pkgKeepHelper(RPackage *pkg);
+
+   // PolySynaptic: Unified view package operations
+   void unifiedPkgInstall(const PolySynaptic::PackageInfo& pkg);
+   void unifiedPkgRemove(const PolySynaptic::PackageInfo& pkg);
+   void buildUnifiedPopupMenu();
+   PolySynaptic::PackageInfo* selectedUnifiedPackage();
 
    // helper for recommends/suggests 
    // (data is the name of the pkg, self needs to have a pointer to "me" )
@@ -273,6 +280,14 @@ class RGMainWindow : public RGGtkBuilderWindow, public RPackageObserver {
                                    GdkEventButton *event,
                                    RGMainWindow *me,
                                    vector<RPackage *> selected_pkgs);
+
+   // PolySynaptic: Unified view popup menu callbacks
+   static void cbUnifiedTreeviewPopupMenu(GtkWidget *treeview,
+                                          GdkEventButton *event,
+                                          RGMainWindow *me,
+                                          vector<PolySynaptic::PackageInfo*> selected_pkgs);
+   static void cbUnifiedPkgInstall(GtkWidget *self, void *data);
+   static void cbUnifiedPkgRemove(GtkWidget *self, void *data);
 
    static void cbChangelogDialog(GtkWidget *self, void *data);
 
